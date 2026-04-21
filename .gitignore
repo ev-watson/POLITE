@@ -1,0 +1,30 @@
+# FITS data (large binary files)
+FITSDATA/
+datafiles/
+*.fit
+*.fits
+
+# compiled Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# macOS metadata
+.DS_Store
+
+# IDE / editor config
+.idea/
+.vscode/
+.claude/
+
+# temporary images and outputs
+tmpimg/
+final-imgs/
+
+# local dev / project management
+CLAUDE.md
+prompts/
+reference-sheets/
+
+# PDFs (reference materials)
+*.pdf
