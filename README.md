@@ -1,6 +1,6 @@
 # POLITE
 
-Observatory automation and CMOS detector characterization for a PlaneWave CDK14 + QHY268M (IMX571) imaging system, controlled via ASCOM Alpaca.
+Observatory automation and CMOS detector characterization for a PlaneWave CDK20 + QHY268M (IMX571) imaging system, controlled via ASCOM Alpaca.
 
 ## Overview
 
