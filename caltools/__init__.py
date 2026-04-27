@@ -1,9 +1,9 @@
 """
-caltools — CMOS Detector Characterization Library for the POLITE Observatory.
+caltools — Detector characterization tools for the POLITE Observatory.
 
-Provides reusable calibration algorithms for the QHY268M (IMX571) CMOS
-detector, following EMVA-1288 v4.0, Alarcon+2023, and established
-sCMOS characterization methods.
+Provides reusable calibration and characterization routines for astronomical
+imaging detectors: bias/dark/flat stacking, noise maps, gain and linearity
+measurements, dark-current analysis, and PRNU maps.
 
 Usage
 -----

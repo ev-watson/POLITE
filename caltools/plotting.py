@@ -1,7 +1,7 @@
 """
 caltools.plotting — Visualization helpers for detector characterization.
 
-Standardized figure functions used throughout the reduction notebook.
+Figure helpers used throughout the reduction notebook.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ def image_with_colorbar(
     origin: str = "upper",
     **imshow_kw,
 ) -> plt.cm.ScalarMappable:
-    """Display a 2-D image with a properly-sized colorbar.
+    """Display a 2-D image with a matched colorbar.
 
     Parameters
     ----------

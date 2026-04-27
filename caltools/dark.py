@@ -1,8 +1,8 @@
 """
 caltools.dark — Dark current analysis, temperature dependence, warm pixels.
 
-Methods follow EMVA-1288 dark current measurement protocol.
-Temperature fitting uses Arrhenius/Widenhorn 2001 model where data permits.
+Measures dark current from dark-frame stacks. Temperature fitting uses an
+Arrhenius/Widenhorn-style model where the data support it.
 """
 
 from __future__ import annotations

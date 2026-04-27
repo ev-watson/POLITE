@@ -1,8 +1,8 @@
 """
 caltools.io — FITS loading, file grouping, and header parsing.
 
-Handles QHY268M specifics: BZERO=32768, missing GAIN keyword,
-memmap=False requirement for astropy scaling.
+Includes safeguards for scaled integer FITS data, optional gain keywords,
+and astropy's in-memory scaling path.
 """
 
 from __future__ import annotations
@@ -29,8 +29,8 @@ def load_frame(
 ) -> Frame:
     """Load a single FITS frame.
 
-    Handles BZERO=32768 scaling by using ``memmap=False`` (required for
-    QHY268M headers where astropy applies in-memory scaling).
+    Uses ``memmap=False`` so astropy can apply in-memory scaling for
+    FITS files that use BZERO/BSCALE.
 
     Parameters
     ----------

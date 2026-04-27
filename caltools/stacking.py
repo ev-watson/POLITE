@@ -23,8 +23,8 @@ def master_bias(
     """Construct a master bias from a stack of bias frames.
 
     Uses chunked row-wise processing: at ``chunk_rows=50`` with 100 frames,
-    each chunk is ~126 MB.  The median with N >= 100 frames is already
-    extremely robust against RTN/S&P outliers (Alarcon+2023).
+    each chunk is ~126 MB. The median is well suited for rejecting
+    intermittent outliers when enough frames are available.
 
     Parameters
     ----------
@@ -107,7 +107,7 @@ def master_flat(
     chunk_rows: int = 50,
     roi: Optional[ROI] = None,
 ) -> Frame:
-    """Construct a normalised master flat (EMVA-1288 Sec. 8.1).
+    """Construct a normalized master flat.
 
     Parameters
     ----------

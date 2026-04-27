@@ -1,7 +1,8 @@
 """
 caltools.noise — Read noise, banding, DSNU, FPN, and RTN detection.
 
-Methods follow Alarcon+2023 (sCMOS characterization) and EMVA-1288 v4.0.
+Noise measurements based on frame differencing, robust spatial statistics,
+and row/column decomposition.
 """
 
 from __future__ import annotations
@@ -170,7 +171,8 @@ def dsnu(
     """Compute Dark Signal Non-Uniformity decomposed into pixel/row/column.
 
     DSNU = std(master_dark - bias) across the spatial dimensions.
-    Decomposition follows EMVA-1288 Sec. 7:
+    The decomposition separates broad row/column structure from the
+    remaining pixel-scale component:
       - Pixel DSNU: residual after removing row/column structure
       - Row DSNU: std of row medians
       - Column DSNU: std of column medians
@@ -269,10 +271,10 @@ def detect_rtn_pixels(
     config: SensorConfig,
     sigma_threshold: float = 3.0,
 ) -> AnalysisResult:
-    """Detect Salt & Pepper / Random Telegraph Noise pixels.
+    """Detect random telegraph noise candidate pixels.
 
-    Following Alarcon+2023 Sec. 3.1 & 5: RTN pixels have anomalously
-    high temporal std but normal mean bias level.
+    RTN candidates have anomalously high temporal std but normal mean
+    bias level.
 
     Parameters
     ----------
@@ -281,11 +283,11 @@ def detect_rtn_pixels(
     config : SensorConfig
         Sensor configuration.
     sigma_threshold : float
-        Number of RMS-RON above which a pixel is flagged as S&P.
+        Number of RMS-RON above which a pixel is flagged as an RTN candidate.
 
     Returns
     -------
-    AnalysisResult with the S&P mask and pixel statistics.
+    AnalysisResult with the candidate mask and pixel statistics.
     """
     pixel_mean = np.mean(cube, axis=0, dtype=np.float64)
     pixel_std = np.std(cube, axis=0, dtype=np.float64)
@@ -298,7 +300,7 @@ def detect_rtn_pixels(
     med_bias = float(np.median(pixel_mean))
     mad_bias = mad_sigma(pixel_mean)
 
-    # S&P: high temporal std, normal mean bias
+    # RTN candidates: high temporal std, normal mean bias
     sp_mask = (
         (pixel_std > sigma_threshold * rms_ron)
         & (np.abs(pixel_mean - med_bias) < 5 * mad_bias)

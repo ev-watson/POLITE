@@ -1,11 +1,11 @@
 """
-Alpaca (alpyca) camera -> FITS capture routine with research-grade headers.
+Alpaca (alpyca) camera -> FITS capture routine with observing metadata.
 
 Notes:
 - FITS required structural keywords (SIMPLE/BITPIX/NAXIS/NAXISn) are written by astropy.
-- This adds standard observational, instrument, and (optional) WCS metadata in a FITS-safe way.
-- Many keywords in your example (e.g., UCAM*, GEOMCODE, etc.) are instrument/pipeline-specific;
-  this supports injecting them via `extra_cards` without hard-coding a single camera’s schema.
+- This adds observational, instrument, and optional WCS metadata.
+- Instrument- and pipeline-specific keywords can be supplied through
+  `extra_cards` without hard-coding a single camera schema.
 """
 
 from __future__ import annotations
@@ -58,7 +58,7 @@ class CaptureConfig:
     # Keys should be valid FITS keywords: CRPIX1, CRVAL1, CD1_1, CTYPE1, etc.
     wcs_cards: Dict[str, Any] = field(default_factory=dict)
 
-    # Extra instrument/pipeline cards (your UCAM*/GEOM*/DATASEC/etc live here).
+    # Extra instrument/pipeline cards.
     extra_cards: Dict[str, Any] = field(default_factory=dict)
 
     # If you want FITS CHECKSUM/DATASUM
@@ -111,7 +111,7 @@ def _set_card(hdr: fits.Header, key: str, value: Any, comment: Optional[str] = N
 def _build_header(c: Camera, cfg: CaptureConfig, data_dtype: np.dtype, shape: Tuple[int, ...]) -> fits.Header:
     hdr = fits.Header()
 
-    # Minimal FITS “documentation” comments (optional; keeps headers friendly for humans/archives)
+    # Minimal provenance comment.
     hdr["COMMENT"] = "FITS format per NASA/IAU definition; header populated by alpyca capture routine."
 
     # If we store unsigned 16-bit from a signed source, set BZERO/BSCALE in the conventional way.
@@ -120,7 +120,7 @@ def _build_header(c: Camera, cfg: CaptureConfig, data_dtype: np.dtype, shape: Tu
         _set_card(hdr, "BZERO", 32768.0, "Data zero point")
         _set_card(hdr, "BSCALE", 1.0, "Data scale factor")
 
-    # Exposure / timing (FITS standard practice)
+    # Exposure / timing
     # DATE-OBS should be start time of exposure; alpyca provides c.LastExposureStartTime.
     _set_card(hdr, "EXPTIME", float(c.LastExposureDuration), "Exposure time [s]")
     _set_card(hdr, "EXPOSURE", float(c.LastExposureDuration), "Exposure time [s]")

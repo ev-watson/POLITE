@@ -1,10 +1,10 @@
 # POLITE
 
-Observatory automation and CMOS detector characterization for a PlaneWave CDK20 + QHY268M (IMX571) imaging system, controlled via ASCOM Alpaca.
+Observatory automation and detector characterization for a PlaneWave CDK20 + QHY268M (IMX571) imaging system, controlled via ASCOM Alpaca.
 
 ## Overview
 
-POLITE provides end-to-end observatory control — from mount startup and slewing through automated imaging sequences and calibration frame acquisition — alongside a rigorous CMOS characterization library (`caltools`) following EMVA-1288 v4.0 and established sCMOS methods.
+POLITE provides end-to-end observatory control — from mount startup and slewing through automated imaging sequences and calibration frame acquisition — alongside `caltools`, a detector characterization library for bias, dark, flat, noise, gain, linearity, and PRNU analysis.
 
 The system interfaces with PlaneWave's PWI4 HTTP API for mount control and the ASCOM Alpaca REST protocol for camera and filter wheel operations. Night sessions are defined declaratively as target/frame plans and executed autonomously with logging, autoguiding, and dithering support.
 
@@ -27,13 +27,13 @@ obs_utils/               Observatory control modules
 alpyca_tools/            ASCOM Alpaca camera interface layer
   camera_device.py       Camera device abstraction
   camera_ops.py          Exposure control and readout
-  fits_writer.py         FITS file writing with proper headers
+  fits_writer.py         FITS file writing with acquisition metadata
   discovery.py           Alpaca device discovery
   schema.py              Camera state schema
   telemetry.py           Telemetry collection
   scripts/               Diagnostic and snapshot scripts
 
-caltools/                CMOS detector characterization library (v0.1.0)
+caltools/                Detector characterization library (v0.1.0)
   io.py                  FITS I/O, cube loading, header parsing
   stacking.py            Master bias, dark, flat generation
   stats.py               Welford accumulator, MAD sigma, outlier masking
@@ -42,7 +42,7 @@ caltools/                CMOS detector characterization library (v0.1.0)
   gain.py                Photon transfer curve, full well, noise decomposition
   linearity.py           Linearity testing and error characterization
   prnu.py                Photo-response non-uniformity mapping
-  plotting.py            Publication-quality diagnostic plots
+  plotting.py            Diagnostic plots
 
 scripts/                 Night session automation scripts
 utils.py                 General-purpose astronomy utilities
@@ -92,4 +92,4 @@ ptc = ct.photon_transfer_curve(flat_pairs, bias)
 
 ## AI Disclosure
 
-AI-assisted tools (Claude, Anthropic) were used during development of this repository for code architecture, implementation, and documentation.
+AI-assisted tools (Claude, Codex) were used during development of this repository for code architecture, implementation, and documentation.

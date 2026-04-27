@@ -78,7 +78,7 @@ def photon_transfer_curve(
     roi : ROI, optional
         Central ROI to use (avoids edges/vignetting).
     method : str
-        ``"all_pairs"`` — form all C(N,2) pairs per group (robust).
+        ``"all_pairs"`` — form all C(N,2) pairs per group.
 
     Returns
     -------
@@ -166,7 +166,7 @@ def photon_transfer_curve_with_ron(
     ron_var_adu2: float,
     roi: Optional[ROI] = None,
 ) -> AnalysisResult:
-    """PTC with an external RON² prior (e.g. from Step 1).
+    """PTC with an external RON² prior.
 
     Same as ``photon_transfer_curve`` but the fixed-intercept fit
     uses the supplied ``ron_var_adu2`` instead of estimating from the
@@ -175,7 +175,7 @@ def photon_transfer_curve_with_ron(
     Parameters
     ----------
     ron_var_adu2 : float
-        Read noise variance in ADU² (from bias frame analysis).
+        Read noise variance in ADU², usually from bias frame analysis.
     """
     bias_roi = bias
     if roi is not None:
