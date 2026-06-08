@@ -103,12 +103,28 @@ def write_pol_fits(
     return out
 
 
+def _read_hwp_angle(hdr: fits.Header, path: Union[str, Path]) -> float:
+    """Return the finite HWP angle (deg) from a header, or raise.
+
+    Polarimetry reduction is meaningless without the HWP angle, so a missing or
+    non-finite ``HWPANG`` is a hard, file-named error (fail-closed) rather than a
+    silent ``NaN`` that surfaces downstream as a cryptic angle-lookup miss or a
+    distinct ``NaN`` grouping bucket.
+    """
+    if "HWPANG" not in hdr:
+        raise ValueError(f"{path}: missing required FITS keyword 'HWPANG'")
+    ang = float(hdr["HWPANG"])
+    if not np.isfinite(ang):
+        raise ValueError(f"{path}: non-finite HWPANG ({hdr['HWPANG']!r})")
+    return ang
+
+
 def read_pol_frame(path: Union[str, Path], roi=None
                    ) -> Tuple[np.ndarray, float, fits.Header]:
     """Read a polarimetry frame. Returns ``(data_float32, hwp_deg, header)``."""
     data = ct.load_frame(str(path), roi=roi)
     hdr = fits.getheader(str(path))
-    hwp = float(hdr.get("HWPANG", np.nan))
+    hwp = _read_hwp_angle(hdr, path)
     return data, hwp, hdr
 
 
@@ -117,7 +133,7 @@ def group_by_hwp_angle(paths: List[Union[str, Path]]) -> Dict[float, List[str]]:
     groups: Dict[float, List[str]] = defaultdict(list)
     for p in paths:
         hdr = fits.getheader(str(p))
-        groups[round(float(hdr.get("HWPANG", np.nan)), 3)].append(str(p))
+        groups[round(_read_hwp_angle(hdr, p), 3)].append(str(p))
     return {k: sorted(v) for k, v in groups.items()}
 
 
@@ -126,6 +142,6 @@ def group_pol_sequence(paths: List[Union[str, Path]]) -> "OrderedDict[float, str
     pairs = []
     for p in paths:
         hdr = fits.getheader(str(p))
-        pairs.append((float(hdr.get("HWPANG", np.nan)), str(p)))
+        pairs.append((_read_hwp_angle(hdr, p), str(p)))
     pairs.sort(key=lambda t: t[0])
     return OrderedDict(pairs)

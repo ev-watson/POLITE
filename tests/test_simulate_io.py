@@ -1,6 +1,7 @@
 """Simulator + I/O: FITS byte-compatibility and polarimetry metadata."""
 
 import numpy as np
+import pytest
 from astropy.io import fits
 
 import caltools as ct
@@ -32,6 +33,27 @@ def test_sequence_writes_all_angles_and_groups(cfg, rng, tmp_path):
     assert set(groups.keys()) == set(round(a, 3) for a in cfg.hwp_angles_deg)
     seq = pt.group_pol_sequence([str(p) for p in paths])
     assert list(seq.keys()) == sorted(cfg.hwp_angles_deg)
+
+
+def test_missing_hwpang_raises_named_error(tmp_path):
+    """A frame without HWPANG is a hard, file-named error (not a silent NaN that
+    surfaces later as a cryptic angle-lookup miss)."""
+    data = np.zeros((32, 32), dtype=np.uint16)
+    p = tmp_path / "no_hwp.fit"
+    fits.PrimaryHDU(data=data).writeto(p)
+    with pytest.raises(ValueError):
+        pt.read_pol_frame(str(p))
+    with pytest.raises(ValueError):
+        pt.group_by_hwp_angle([str(p)])
+    with pytest.raises(ValueError):
+        pt.group_pol_sequence([str(p)])
+
+
+def test_make_scene_length_mismatch_raises():
+    """make_scene rejects unequal-length inputs instead of silently truncating
+    to the shortest via zip()."""
+    with pytest.raises(ValueError):
+        pt.make_scene([(1.0, 2.0), (3.0, 4.0)], [(1, 0.0, 0.0, 0)], [1e5, 2e5])
 
 
 def test_render_saturation_clip(cfg, rng):

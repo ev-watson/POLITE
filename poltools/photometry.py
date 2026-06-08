@@ -149,7 +149,15 @@ def photometer_sequence(
         Ordinary-beam positions of each source (e found via the beam offset).
     Returns ``{source_name: [BeamFlux, ...]}`` ordered by HWP angle.
     """
+    o_positions = list(o_positions)
     names = list(names) if names is not None else [f"src{i}" for i in range(len(o_positions))]
+    if len(names) != len(o_positions):
+        raise ValueError(
+            f"names ({len(names)}) must match o_positions ({len(o_positions)})"
+        )
+    if len(set(names)) != len(names):
+        # duplicate names would collapse the per-source result dict below
+        raise ValueError(f"source names must be unique; got {names}")
     dx, dy = cfg.beam.offset_xy()
     out: Dict[str, List[BeamFlux]] = {nm: [] for nm in names}
     for ang in sorted(frames_by_angle.keys()):

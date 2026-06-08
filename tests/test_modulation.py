@@ -50,6 +50,23 @@ def test_double_ratio_requires_four_angles():
         pt.double_ratio(bfs)
 
 
+@pytest.mark.parametrize("bad", [0.0, -5.0, np.nan, np.inf])
+def test_all_reductions_reject_nonpositive_flux(bad):
+    """A non-positive/non-finite beam flux fails-closed identically across all
+    three reductions (ValueError) — not ZeroDivisionError (double_ratio) nor
+    silent garbage (double_difference, lsq_modulation)."""
+    bfs4 = make_beamfluxes(0.03, -0.02, 1e6, ANGLES4)
+    bfs8 = make_beamfluxes(0.03, -0.02, 1e6, ANGLES8)
+    bfs4[1].f_o = bad   # angle 22.5 (used by every reduction)
+    bfs8[1].f_o = bad
+    with pytest.raises(ValueError):
+        pt.double_ratio(bfs4)
+    with pytest.raises(ValueError):
+        pt.double_difference(bfs4)
+    with pytest.raises(ValueError):
+        pt.lsq_modulation(bfs8)
+
+
 def test_lsq_modulation_chi2_and_cov(rng):
     bfs = make_beamfluxes(0.03, -0.02, 5e5, ANGLES8, rng=rng)
     B = pt.lsq_modulation(bfs)

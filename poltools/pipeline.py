@@ -74,11 +74,31 @@ def reduce_to_stokes(
     calibration : PolCalibration, optional
         Applied to (q,u) before Stokes assembly.
     """
-    # 1. read + group by HWP angle
+    # 0. validate the reduction method up front — before any file I/O, and not
+    #    late inside the per-source loop (where a bad method wasted the whole
+    #    reduction, or was never checked at all when zero sources were detected).
+    reducers = {
+        "double_ratio": mod.double_ratio,        # flat-field-independent (primary)
+        "double_difference": mod.double_difference,  # first-order comparator
+        "lsq": mod.lsq_modulation,               # least-squares modulation fit
+    }
+    m = method.lower()
+    if m not in reducers:
+        raise ValueError(
+            f"Unknown method {method!r} (use {', '.join(sorted(reducers))})"
+        )
+    reduce_fn = reducers[m]
+
+    # 1. read + group by HWP angle. Repeat frames at the same angle are
+    #    mean-combined (preserving the ADU + bias-pedestal scale the photometry
+    #    noise model assumes) rather than silently overwritten — multiple
+    #    exposures per angle are standard for stacking / cosmic-ray rejection.
+    groups = pol_io.group_by_hwp_angle(list(frame_paths))
     frames_by_angle: Dict[float, np.ndarray] = {}
-    for p in frame_paths:
-        data, hwp, _ = pol_io.read_pol_frame(p)
-        frames_by_angle[round(float(hwp), 3)] = data
+    for ang, paths_at_angle in groups.items():
+        stack = [pol_io.read_pol_frame(p)[0] for p in paths_at_angle]
+        frames_by_angle[ang] = (stack[0] if len(stack) == 1
+                                else np.mean(stack, axis=0))
 
     # 2. positions: provided or detected
     if o_positions is None:
@@ -104,18 +124,7 @@ def reduce_to_stokes(
     # 4-6. modulation → calibration → Stokes assembly
     results: List[StokesResult] = []
     for nm, bfs in flux_by_src.items():
-        m = method.lower()
-        if m == "double_ratio":
-            qu = mod.double_ratio(bfs)                    # flat-field-independent
-        elif m == "double_difference":
-            qu = mod.double_difference(bfs)               # first-order comparator
-        elif m == "lsq":
-            qu = mod.lsq_modulation(bfs)
-        else:
-            raise ValueError(
-                f"Unknown method {method!r} "
-                f"(use 'double_ratio', 'double_difference', 'lsq')"
-            )
+        qu = reduce_fn(bfs)
 
         if calibration is not None:
             qu = _calibrate_qu(qu, calibration)

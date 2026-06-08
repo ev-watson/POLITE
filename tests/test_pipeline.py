@@ -65,6 +65,71 @@ def test_pull_distribution_is_unit_normal(q_true, u_true, rng):
     assert pulls_u.std(ddof=1) == pytest.approx(1.0, abs=0.08)
 
 
+def test_double_difference_end_to_end(cfg, rng, tmp_path):
+    """The first-order comparator runs through the full pipeline and recovers
+    truth (closes the gap: no pipeline-level coverage drove double_difference)."""
+    positions = [(128.0, 128.0)]
+    qt, ut = 0.04, -0.03
+    scene = pt.make_scene(positions, [(1, qt, ut, 0)], [6e6])
+    paths = pt.simulate_sequence(scene, cfg, out_dir=tmp_path, exptime_s=15.0,
+                                 seeing_arcsec=2.0, sky_e_per_px=60.0, rng=rng,
+                                 shape=(256, 256))
+    r = pt.reduce_to_stokes([str(p) for p in paths], cfg, o_positions=positions,
+                            method="double_difference", r_ap=7, r_in=12, r_out=20)[0]
+    s = r.scalar_summary
+    assert r.metadata["method"] == "double_difference"
+    assert abs(s["q"] - qt) < 4 * s["sigma_q"] + 3e-3
+    assert abs(s["u"] - ut) < 4 * s["sigma_u"] + 3e-3
+
+
+def test_repeat_angle_frames_combined_not_dropped(cfg, rng, tmp_path):
+    """Multiple frames at the same HWP angle are mean-combined, not silently
+    overwritten (the old inline dict-grouping kept only the last frame)."""
+    positions = [(128.0, 128.0)]
+    qt, ut = 0.03, -0.02
+    scene = pt.make_scene(positions, [(1, qt, ut, 0)], [6e6])
+    p1 = pt.simulate_sequence(scene, cfg, out_dir=tmp_path / "a", exptime_s=15.0,
+                              seeing_arcsec=2.0, sky_e_per_px=60.0, rng=rng,
+                              shape=(256, 256), seq_id="A")
+    p2 = pt.simulate_sequence(scene, cfg, out_dir=tmp_path / "b", exptime_s=15.0,
+                              seeing_arcsec=2.0, sky_e_per_px=60.0, rng=rng,
+                              shape=(256, 256), seq_id="B")
+    allp = [str(p) for p in (list(p1) + list(p2))]
+    # grouping keeps both frames per angle (not last-wins)
+    groups = pt.group_by_hwp_angle(allp)
+    assert all(len(v) == 2 for v in groups.values())
+    res = pt.reduce_to_stokes(allp, cfg, o_positions=positions,
+                              method="double_ratio", r_ap=7, r_in=12, r_out=20)
+    assert len(res) == 1
+    s = res[0].scalar_summary
+    assert abs(s["q"] - qt) < 4 * s["sigma_q"] + 1e-3
+    assert abs(s["u"] - ut) < 4 * s["sigma_u"] + 1e-3
+
+
+def test_invalid_method_raises_even_with_no_detected_sources(cfg, rng, tmp_path):
+    """Method is validated up front, so a bad method raises even when detection
+    finds zero sources (the old per-source dispatch returned [] without ever
+    validating the method)."""
+    scene = pt.make_scene([], [], [])  # empty scene -> nothing to detect
+    paths = pt.simulate_sequence(scene, cfg, out_dir=tmp_path, rng=rng,
+                                 shape=(128, 128), exptime_s=1.0, sky_e_per_px=20.0)
+    with pytest.raises(ValueError):
+        pt.reduce_to_stokes([str(p) for p in paths], cfg, method="bogus",
+                            detect=True, threshold_sigma=50.0)
+
+
+def test_names_positions_mismatch_raises(cfg, rng, tmp_path):
+    """A names/o_positions length mismatch is rejected (would otherwise drop
+    sources silently)."""
+    positions = [(128.0, 128.0)]
+    scene = pt.make_scene(positions, [(1, 0.0, 0.0, 0)], [1e6])
+    paths = pt.simulate_sequence(scene, cfg, out_dir=tmp_path, rng=rng,
+                                 shape=(128, 128), exptime_s=2.0)
+    with pytest.raises(ValueError):
+        pt.reduce_to_stokes([str(p) for p in paths], cfg, o_positions=positions,
+                            names=["a", "b"], method="double_ratio")
+
+
 def test_calibration_applied_in_pipeline(cfg, rng, tmp_path):
     """Injecting IP in the simulator and supplying its calibration recovers truth."""
     q_true, u_true = 0.02, 0.0

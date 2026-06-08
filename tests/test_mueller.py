@@ -56,6 +56,18 @@ def test_retarder_depolarization_window():
         assert abs(p_meas - p_true) / p_true <= 2.0e-3
 
 
+def test_system_mueller_matches_oe_intensities():
+    """The full-chain Mueller matrix (analyzer along +Q') reproduces the e-beam
+    intensity from oe_intensities at every HWP angle."""
+    q, u = 0.05, -0.03
+    S = pt.stokes_vector(1.0, q, u)
+    for th in (0.0, 22.5, 45.0, 67.5):
+        M = pt.system_mueller(th)              # analyzer_deg=0 -> +Q' (e) arm
+        I_e = float((M @ S)[0])
+        _, Ie_ref = pt.oe_intensities(S, th)
+        assert I_e == pytest.approx(Ie_ref, abs=1e-12)
+
+
 def test_qwp_ready_v_mode():
     """Architecture is V-ready: a QWP (δ=90) Mueller matrix is correct/non-trivial
     in the V row (even though the linear pipeline never solves V)."""

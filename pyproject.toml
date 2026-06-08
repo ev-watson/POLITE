@@ -1,0 +1,11 @@
+# POLITE — project tooling configuration.
+#
+# Minimal config: there is no build step (modules are imported in place from the
+# repository root). This block makes the test suite runner-independent — plain
+# ``pytest`` now collects the same way as ``python -m pytest`` by putting the
+# repo root on ``sys.path`` (so ``import poltools`` / ``import caltools`` resolve
+# regardless of the invoking working directory or IDE).
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

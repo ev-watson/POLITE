@@ -1,6 +1,7 @@
 """Photometry: detection, o/e pairing, and aperture flux recovery."""
 
 import numpy as np
+import pytest
 
 import poltools as pt
 
@@ -37,3 +38,24 @@ def test_aperture_flux_recovers_injected(cfg, rng):
     assert abs(flux[1] - total_e / 2) / (total_e / 2) < 0.03
     # uncertainty is positive and order sqrt(flux)
     assert np.all(sig > 0)
+
+
+def test_measure_pair_matches_measure_fluxes(cfg, rng):
+    """measure_pair (single o/e convenience) equals the underlying batched
+    measure_fluxes and packs them into a BeamFlux."""
+    pos = (128.0, 128.0)
+    scene = pt.make_scene([pos], [(1, 0.0, 0.0, 0)], [3.0e5])
+    img = pt.render_frame(scene, cfg, 0.0, exptime_s=10.0, seeing_arcsec=1.0,
+                          sky_e_per_px=50.0, rng=rng, shape=(256, 256),
+                          bias_adu=1000.0)
+    dx, dy = cfg.beam.offset_xy()
+    e_xy = (pos[0] + dx, pos[1] + dy)
+    bf = pt.measure_pair(img, pos, e_xy, cfg, hwp_deg=22.5, r_ap=8, r_in=12,
+                         r_out=18, bias_adu=1000.0)
+    flux, sig = pt.measure_fluxes(img, [pos, e_xy], cfg, r_ap=8, r_in=12,
+                                  r_out=18, bias_adu=1000.0)
+    assert bf.hwp_deg == 22.5
+    assert bf.f_o == pytest.approx(flux[0])
+    assert bf.f_e == pytest.approx(flux[1])
+    assert bf.sig_o == pytest.approx(sig[0])
+    assert bf.sig_e == pytest.approx(sig[1])

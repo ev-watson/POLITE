@@ -82,7 +82,6 @@ from .errors import (
     debias_naive,
     debias_wardle_kronberg,
     residual_sigma_p,
-    sigma_p_mas,
     sigma_theta_highsnr,
     sigma_theta_nkc,
 )
@@ -118,7 +117,7 @@ __all__ = [
     "assemble_stokes", "polarization_fraction_angle",
     # errors
     "residual_sigma_p", "debias_naive", "debias_wardle_kronberg", "debias_mas",
-    "sigma_p_mas", "sigma_theta_highsnr", "sigma_theta_nkc",
+    "sigma_theta_highsnr", "sigma_theta_nkc",
     # calibration
     "PolCalibration", "fit_instrumental_polarization", "fit_pa_zeropoint",
     "fit_efficiency",

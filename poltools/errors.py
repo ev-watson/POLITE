@@ -11,16 +11,17 @@ All estimators are sourced from peer-reviewed / user-provided literature
   (1993, A&A 274, 968, Source B).
 * Polarization bias / debiasing: the Modified Asymptotic (MAS) estimator —
   Plaszczynski et al. (2014, MNRAS 439, 4048, Source B) eq. 20; restated in
-  Montier et al. (2015 II, Source B) eq. 19; with the MAS variance (Montier II
-  eq. 20). Classical comparators: Wardle & Kronberg (1974) and the naive
-  estimator.
+  Montier et al. (2015 II, Source B) eq. 19. Classical comparators: Wardle &
+  Kronberg (1974) and the naive estimator. (The MAS polarization-fraction
+  variance, Montier II eq. 20, is the cov-free special case of the general q–u
+  propagation in :func:`poltools.stokes.sigma_p_from_qu`, which is used instead.)
 
 No analysis method outside Sources A/B is introduced.
 """
 
 from __future__ import annotations
 
-from typing import Tuple
+from typing import Optional
 
 import numpy as np
 from scipy import integrate, optimize
@@ -67,7 +68,7 @@ def debias_wardle_kronberg(p: float, sigma_p: float) -> float:
     return float(np.sqrt(max(p ** 2 - sigma_p ** 2, 0.0)))
 
 
-def debias_mas(p: float, sigma_p: float, b2: float = None) -> float:
+def debias_mas(p: float, sigma_p: float, b2: Optional[float] = None) -> float:
     """Modified Asymptotic estimator (Plaszczynski 2014 eq. 20).
 
     ``p_MAS = p − b²·(1 − e^{−p²/b²}) / (2p)``.
@@ -87,22 +88,6 @@ def debias_mas(p: float, sigma_p: float, b2: float = None) -> float:
     if p <= 0:
         return 0.0
     return float(p - b2 * (1.0 - np.exp(-(p ** 2) / b2)) / (2.0 * p))
-
-
-def sigma_p_mas(sigma_q: float, sigma_u: float, theta_deg: float,
-                I0: float = 1.0, psi_deg: float = 0.0) -> float:
-    """MAS polarization-fraction variance (Montier II eq. 20).
-
-    ``σ²_{p,MAS} = [σ'_Q² cos²(2ψ−θ) + σ'_U² sin²(2ψ−θ)] / I₀²``.
-
-    With ``ψ`` the analyzer reference and ``θ`` the polarization angle. For the
-    common equal-variance, normalized case this reduces to ``σ_p ≈ σ_q ≈ σ_u``.
-    """
-    th = np.deg2rad(theta_deg)
-    ps = np.deg2rad(psi_deg)
-    arg = 2 * ps - 2 * th  # 2ψ − 2θ (θ already the half-angle in deg of PA)
-    var = (sigma_q ** 2 * np.cos(arg) ** 2 + sigma_u ** 2 * np.sin(arg) ** 2) / (I0 ** 2)
-    return float(np.sqrt(max(var, 0.0)))
 
 
 # --------------------------------------------------------------------------- #

@@ -40,8 +40,34 @@ def ratio_r(f_o: float, f_e: float) -> float:
     return float((f_e - f_o) / s) if s != 0 else float("nan")
 
 
-def _index_by_angle(beam_fluxes: List[BeamFlux], tol: float = 1e-3) -> Dict[float, BeamFlux]:
-    """Map HWP angle (mod 180, rounded) → BeamFlux for lookup."""
+def _validate_beam_fluxes(beam_fluxes: List[BeamFlux]) -> None:
+    """Enforce the reduction input invariant: finite, positive o/e fluxes.
+
+    A non-positive or non-finite beam flux signals a non-detection, blended,
+    saturated, or over-sky-subtracted source — it cannot yield a meaningful
+    polarization ratio. All three reductions reject such input identically and
+    loudly (fail-closed) instead of returning silent garbage
+    (``double_difference``, ``lsq_modulation``) or crashing with an opaque
+    ``ZeroDivisionError`` (``double_ratio``). This is input validation only; no
+    analysis method outside CLAUDE.md Sources A/B is introduced.
+    """
+    bad = [
+        (bf.hwp_deg, bf.f_o, bf.f_e)
+        for bf in beam_fluxes
+        if not (np.isfinite(bf.f_o) and np.isfinite(bf.f_e)
+                and bf.f_o > 0.0 and bf.f_e > 0.0)
+    ]
+    if bad:
+        detail = ", ".join(f"{a:g} deg (f_o={fo:g}, f_e={fe:g})"
+                           for a, fo, fe in bad)
+        raise ValueError(
+            "modulation requires finite, positive o/e fluxes at every HWP "
+            f"angle; got non-positive/non-finite flux at: {detail}"
+        )
+
+
+def _index_by_angle(beam_fluxes: List[BeamFlux]) -> Dict[float, BeamFlux]:
+    """Map HWP angle (mod 180, rounded to 1e-3 deg) → BeamFlux for lookup."""
     out: Dict[float, BeamFlux] = {}
     for bf in beam_fluxes:
         out[round(bf.hwp_deg % 180.0, 3)] = bf
@@ -61,6 +87,7 @@ def double_difference(beam_fluxes: List[BeamFlux]) -> Dict[str, float]:
                 f"double_difference requires HWP angle {ang} deg; have "
                 f"{sorted(idx.keys())}"
             )
+    _validate_beam_fluxes([idx[round(ang, 3)] for ang in needed])
 
     def R_and_sig(ang):
         bf = idx[round(ang, 3)]
@@ -88,6 +115,10 @@ def _beam_ratio_pair(idx, tha, thb):
 
     ``RR = r(tha)/r(thb)`` with ``r = f_e/f_o``; ``s = sqrt(RR)``.
     ``Var(lnRR) = Σ (σ/f)²`` over the four involved fluxes.
+
+    Precondition: all four fluxes are finite and positive (enforced by
+    :func:`_validate_beam_fluxes` at the public boundary), so the divisions and
+    ``sqrt`` are well-defined.
     """
     a = idx[round(tha, 3)]
     b = idx[round(thb, 3)]
@@ -114,12 +145,14 @@ def double_ratio(beam_fluxes: List[BeamFlux]) -> Dict[str, float]:
     Returns ``{q, u, sigma_q, sigma_u, s_q, s_u}``.
     """
     idx = _index_by_angle(beam_fluxes)
-    for ang in (0.0, 45.0, 22.5, 67.5):
+    needed = (0.0, 45.0, 22.5, 67.5)
+    for ang in needed:
         if round(ang, 3) not in idx:
             raise ValueError(
                 f"double_ratio requires HWP angle {ang} deg; have "
                 f"{sorted(idx.keys())}"
             )
+    _validate_beam_fluxes([idx[round(ang, 3)] for ang in needed])
     s_q, sig_lnrr_q = _beam_ratio_pair(idx, 0.0, 45.0)
     s_u, sig_lnrr_u = _beam_ratio_pair(idx, 22.5, 67.5)
     q = (s_q - 1.0) / (s_q + 1.0)
@@ -142,6 +175,7 @@ def lsq_modulation(beam_fluxes: List[BeamFlux]) -> Dict[str, object]:
     n = len(bfs)
     if n < 4:
         raise ValueError(f"lsq_modulation needs N>=4 angles; got {n}")
+    _validate_beam_fluxes(bfs)
 
     psi = np.array([np.deg2rad(b.hwp_deg) for b in bfs])
     z = np.array([ratio_r(b.f_o, b.f_e) for b in bfs])

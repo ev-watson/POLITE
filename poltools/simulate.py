@@ -190,6 +190,13 @@ def make_scene(positions, stokes_list, fluxes, names=None) -> List[PointSource]:
     fluxes : list of float (total e-)
     """
     names = names or [f"src{i}" for i in range(len(positions))]
+    n = len(positions)
+    if not (len(stokes_list) == n and len(fluxes) == n and len(names) == n):
+        raise ValueError(
+            "make_scene requires positions, stokes_list, fluxes and names of "
+            f"equal length; got {len(positions)}, {len(stokes_list)}, "
+            f"{len(fluxes)}, {len(names)} (zip would silently truncate)"
+        )
     out = []
     for (x, y), st, fl, nm in zip(positions, stokes_list, fluxes, names):
         if len(st) == 2:
