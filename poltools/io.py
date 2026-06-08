@@ -1,0 +1,131 @@
+"""
+poltools.io — Polarimetry FITS I/O and HWP-sequence grouping.
+
+Adds the retarder/sequence metadata the existing acquisition path lacks and
+reuses ``caltools.io`` for reading (``memmap=False`` is mandatory for the
+BZERO=32768 unsigned-int frames written by TheSkyX / QHY cameras).
+
+FITS keyword conventions follow ``obs_utils/fits_routine.py`` for the shared
+cards, plus the polarimetry block below. These keywords should later be mirrored
+into ``obs_utils/fits_routine.py`` so real frames carry the same metadata.
+"""
+
+from __future__ import annotations
+
+from collections import OrderedDict, defaultdict
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple, Union
+
+import numpy as np
+from astropy.io import fits
+from astropy.time import Time
+
+import caltools as ct
+from ._types import PolConfig
+
+# Polarimetry FITS keywords (8-char-safe) and their comments.
+POL_KEYWORDS = {
+    "HWPANG": "Half-wave-plate angle [deg]",
+    "RETARD": "Retarder retardance delta [deg]",
+    "INSTROT": "Instrument/field rotator angle [deg]",
+    "POLBEAM": "Beam(s) recorded (o/e/dual)",
+    "POLSEQ": "Polarimetry sequence identifier",
+    "POLSEQN": "Index within polarimetry sequence",
+    "POLEFF": "Polarization (modulation) efficiency",
+    "PIXSCALE": "Plate scale [arcsec/pixel]",
+    "EGAIN": "Conversion gain [e-/ADU]",
+}
+
+
+def write_pol_fits(
+    path: Union[str, Path],
+    data_adu: np.ndarray,
+    hwp_deg: float,
+    cfg: PolConfig,
+    *,
+    object_name: str = "SIM",
+    exptime_s: float = 1.0,
+    imagetyp: str = "LIGHT",
+    seq_id: str = "SIM",
+    seq_index: int = 0,
+    efficiency: float = 1.0,
+    date_obs: Optional[str] = None,
+    extra: Optional[Dict[str, object]] = None,
+) -> Path:
+    """Write a simulated/real polarimetry frame with full metadata.
+
+    ``data_adu`` is written as ``uint16`` physical ADU; astropy stores it with
+    ``BZERO=32768, BSCALE=1`` (the same representation the real pipeline reads
+    back, pixel-exact, via ``caltools.load_frame``).
+    """
+    out = Path(path).expanduser().resolve()
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    arr = np.clip(np.rint(data_adu), 0, (1 << cfg.sensor.bitdepth) - 1).astype(np.uint16)
+    hdr = fits.Header()
+    hdr["COMMENT"] = "POLITE simulated polarimetry frame (poltools.simulate)"
+
+    # Shared cards (match obs_utils/fits_routine.py conventions)
+    hdr["EXPTIME"] = (float(exptime_s), "Exposure time [s]")
+    hdr["EXPOSURE"] = (float(exptime_s), "Exposure time [s]")
+    hdr["DATE-OBS"] = (date_obs or Time.now().isot, "Exposure start (UTC)")
+    hdr["TIMESYS"] = ("UTC", "Time system")
+    hdr["IMAGETYP"] = (imagetyp.upper(), "Image type")
+    hdr["OBJECT"] = (object_name, "Target name")
+    hdr["INSTRUME"] = (cfg.sensor.sensor_name, "Instrument/sensor name")
+    hdr["XPIXSZ"] = (float(cfg.sensor.pixel_size_um), "Pixel size [um]")
+    hdr["YPIXSZ"] = (float(cfg.sensor.pixel_size_um), "Pixel size [um]")
+    hdr["CCD-TEMP"] = (float(cfg.sensor.temperature_c), "Detector temperature [C]")
+    hdr["FILTER"] = (cfg.filter_name, "Filter name")
+    hdr["XBINNING"] = (1, "Binning factor in X")
+    hdr["YBINNING"] = (1, "Binning factor in Y")
+
+    # Polarimetry block
+    hdr["EGAIN"] = (float(cfg.sensor.gain_e_per_adu), POL_KEYWORDS["EGAIN"])
+    hdr["PIXSCALE"] = (float(cfg.plate_scale_arcsec), POL_KEYWORDS["PIXSCALE"])
+    hdr["HWPANG"] = (float(hwp_deg), POL_KEYWORDS["HWPANG"])
+    hdr["RETARD"] = (float(cfg.retardance_deg), POL_KEYWORDS["RETARD"])
+    hdr["INSTROT"] = (float(cfg.instrument_rotator_deg), POL_KEYWORDS["INSTROT"])
+    hdr["POLBEAM"] = ("dual", POL_KEYWORDS["POLBEAM"])
+    hdr["POLSEQ"] = (str(seq_id), POL_KEYWORDS["POLSEQ"])
+    hdr["POLSEQN"] = (int(seq_index), POL_KEYWORDS["POLSEQN"])
+    hdr["POLEFF"] = (float(efficiency), POL_KEYWORDS["POLEFF"])
+    hdr["BEAMSEP"] = (float(cfg.beam.separation_px), "o<->e beam separation [px]")
+    hdr["BEAMPA"] = (float(cfg.beam.position_angle_deg), "o->e split position angle [deg]")
+
+    if extra:
+        for k, v in extra.items():
+            hdr[k] = v
+
+    hdr["HISTORY"] = "Created by poltools.io.write_pol_fits"
+    hdu = fits.PrimaryHDU(data=arr, header=hdr)
+    hdu.writeto(out, overwrite=True, output_verify="fix")
+    return out
+
+
+def read_pol_frame(path: Union[str, Path], roi=None
+                   ) -> Tuple[np.ndarray, float, fits.Header]:
+    """Read a polarimetry frame. Returns ``(data_float32, hwp_deg, header)``."""
+    data = ct.load_frame(str(path), roi=roi)
+    hdr = fits.getheader(str(path))
+    hwp = float(hdr.get("HWPANG", np.nan))
+    return data, hwp, hdr
+
+
+def group_by_hwp_angle(paths: List[Union[str, Path]]) -> Dict[float, List[str]]:
+    """Group frame paths by HWP angle (deg) read from the FITS header."""
+    groups: Dict[float, List[str]] = defaultdict(list)
+    for p in paths:
+        hdr = fits.getheader(str(p))
+        groups[round(float(hdr.get("HWPANG", np.nan)), 3)].append(str(p))
+    return {k: sorted(v) for k, v in groups.items()}
+
+
+def group_pol_sequence(paths: List[Union[str, Path]]) -> "OrderedDict[float, str]":
+    """Order frames of a single sequence by HWP angle. Returns angle->path."""
+    pairs = []
+    for p in paths:
+        hdr = fits.getheader(str(p))
+        pairs.append((float(hdr.get("HWPANG", np.nan)), str(p)))
+    pairs.sort(key=lambda t: t[0])
+    return OrderedDict(pairs)
