@@ -1,8 +1,8 @@
 """
 poltools.simulate — Forward model of the POLITE telescope chain.
 
-Renders 2-D imaging FITS frames byte-compatible with the real reduction path
-(research map §5): for each HWP angle it maps every source's astrophysical
+Renders 2-D imaging FITS frames byte-compatible with the real reduction path:
+for each HWP angle it maps every source's astrophysical
 Stokes vector through the Mueller chain to ordinary/extraordinary fluxes, places
 the two PSFs on the detector grid (origin upper-left), injects the QHY268M
 detector physics (shot noise, dark, read noise, full-well clipping, gain,

@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
 
 from ._types import BeamFlux
-from .modulation import ratio_R
+from .modulation import ratio_r
 
 
 def plot_modulation_curve(beam_fluxes: List[BeamFlux], q: float, u: float,
@@ -28,7 +28,7 @@ def plot_modulation_curve(beam_fluxes: List[BeamFlux], q: float, u: float,
     if ax is None:
         _, ax = plt.subplots(figsize=(5, 3.2))
     ang = np.array([b.hwp_deg for b in beam_fluxes])
-    R = np.array([ratio_R(b.f_o, b.f_e) for b in beam_fluxes])
+    R = np.array([ratio_r(b.f_o, b.f_e) for b in beam_fluxes])
     sR = np.array([
         np.hypot(b.sig_o, b.sig_e) / max(b.f_o + b.f_e, 1e-30) for b in beam_fluxes
     ])

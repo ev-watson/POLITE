@@ -1,10 +1,11 @@
 """
 poltools.pipeline — End-to-end reduction: raw frames → calibrated StokesResult.
 
-Orchestrates the full chain (Phase 2 data-flow):
+Orchestrates the full chain:
 
     frames → group by HWP → (detect + pair o/e) → aperture photometry
-          → modulation (Method A or B) → calibration → Stokes assembly + errors
+          → modulation (double_ratio / double_difference / lsq) → calibration
+          → Stokes assembly + errors
 
 One :class:`StokesResult` is produced per source. Source positions may be
 provided (recommended when known, e.g. the simulator showcase) or detected with
@@ -43,7 +44,7 @@ def reduce_to_stokes(
     *,
     o_positions: Optional[Sequence[Tuple[float, float]]] = None,
     names: Optional[Sequence[str]] = None,
-    method: str = "A",
+    method: str = "double_ratio",
     estimator: str = "mas",
     calibration: Optional[PolCalibration] = None,
     r_ap: float = 6.0, r_in: float = 10.0, r_out: float = 16.0,
@@ -64,8 +65,10 @@ def reduce_to_stokes(
     o_positions : list of (x, y), optional
         Ordinary-beam positions. If omitted and ``detect`` is True, sources are
         found with DAOStarFinder and paired via the beam offset.
-    method : {"A", "B"}
-        "A" = double-difference (needs angles {0,22.5,45,67.5}); "B" = LSQ.
+    method : {"double_ratio", "double_difference", "lsq"}
+        "double_ratio" (primary, flat-field-independent; needs angles
+        {0,22.5,45,67.5}); "double_difference" (first-order comparator, same
+        angles); "lsq" (least-squares modulation fit, N>=4 angles).
     estimator : {"mas","wk","naive"}
         Debiasing estimator reported as ``p_report``.
     calibration : PolCalibration, optional
@@ -101,15 +104,18 @@ def reduce_to_stokes(
     # 4-6. modulation → calibration → Stokes assembly
     results: List[StokesResult] = []
     for nm, bfs in flux_by_src.items():
-        m = method.upper()
-        if m == "A":
-            qu = mod.method_a_double_ratio(bfs)          # flat-field-independent
-        elif m == "ADIFF":
-            qu = mod.method_a_double_difference(bfs)      # first-order comparator
-        elif m == "B":
-            qu = mod.method_b_lsq(bfs)
+        m = method.lower()
+        if m == "double_ratio":
+            qu = mod.double_ratio(bfs)                    # flat-field-independent
+        elif m == "double_difference":
+            qu = mod.double_difference(bfs)               # first-order comparator
+        elif m == "lsq":
+            qu = mod.lsq_modulation(bfs)
         else:
-            raise ValueError(f"Unknown method {method!r} (use 'A', 'Adiff', 'B')")
+            raise ValueError(
+                f"Unknown method {method!r} "
+                f"(use 'double_ratio', 'double_difference', 'lsq')"
+            )
 
         if calibration is not None:
             qu = _calibrate_qu(qu, calibration)
@@ -117,7 +123,7 @@ def reduce_to_stokes(
         # intensity reference: mean total flux across angles
         I0 = float(np.mean([b.f_o + b.f_e for b in bfs]))
         res = stk.assemble_stokes(
-            qu, I0=I0, name=nm, method=method.upper(), estimator=estimator,
+            qu, I0=I0, name=nm, method=m, estimator=estimator,
             extra_metadata={"n_angles": len(bfs),
                             "calibrated": calibration is not None},
         )

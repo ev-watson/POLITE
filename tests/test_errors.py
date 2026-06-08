@@ -1,7 +1,7 @@
 """Error metrics & debiasing: MAS bias removal, NK&C PA interval, residual σ_P.
 
 These are validated against direct Monte-Carlo, which is ground truth for the
-Rice/PA statistics (research map §3; Plaszczynski 2014, Montier II, NK&C 1993).
+Rice/PA statistics (Plaszczynski 2014, Montier II, NK&C 1993).
 """
 
 import numpy as np
@@ -68,5 +68,5 @@ def test_residual_sigma_p_zero_for_perfect_fit():
     angles = [i * 22.5 for i in range(8)]
     from conftest import make_beamfluxes
     bfs = make_beamfluxes(0.03, -0.02, 1e8, angles)
-    B = pt.method_b_lsq(bfs)
+    B = pt.lsq_modulation(bfs)
     assert B["sigma_p_resid"] == pytest.approx(0.0, abs=1e-6)

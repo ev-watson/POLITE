@@ -1,4 +1,4 @@
-"""Mueller forward-model checks (research map §2)."""
+"""Mueller forward-model checks."""
 
 import numpy as np
 import pytest
@@ -51,7 +51,7 @@ def test_retarder_depolarization_window():
         for th in angles:
             Io, Ie = pt.oe_intensities(S, th, retardance_deg=delta)
             bfs.append(BeamFlux(th, Io, Ie, 0.0, 0.0))
-        B = pt.method_b_lsq(bfs)
+        B = pt.lsq_modulation(bfs)
         p_meas = np.hypot(B["q"], B["u"])
         assert abs(p_meas - p_true) / p_true <= 2.0e-3
 

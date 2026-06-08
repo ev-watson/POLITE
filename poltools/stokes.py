@@ -6,7 +6,8 @@ Computes the polarization fraction ``p``, position angle ``θ``, the MAS-debiase
 Naghizadeh-Khouei & Clarke low-SNR forms), SNR, and the q–u covariance, and
 packages them into a :class:`StokesResult` (caltools.AnalysisResult-compatible).
 
-All statistics are from the research map (Sources A/B); see poltools.errors.
+All statistics are from peer-reviewed / user-provided literature (Sources A/B);
+see poltools.errors for the per-estimator citations.
 """
 
 from __future__ import annotations
@@ -44,7 +45,7 @@ def sigma_p_from_qu(q: float, u: float, sigma_q: float, sigma_u: float,
 
 
 def assemble_stokes(qu: Dict[str, float], I0: float = 1.0,
-                    name: str = "source", method: str = "A",
+                    name: str = "source", method: str = "double_ratio",
                     estimator: str = "mas",
                     provenance: Optional[Dict[str, str]] = None,
                     extra_metadata: Optional[Dict[str, object]] = None) -> StokesResult:
@@ -53,15 +54,17 @@ def assemble_stokes(qu: Dict[str, float], I0: float = 1.0,
     Parameters
     ----------
     qu : dict
-        Output of :func:`poltools.modulation.method_a_double_difference` or
-        :func:`poltools.modulation.method_b_lsq` (must contain
+        Output of :func:`poltools.modulation.double_ratio`,
+        :func:`poltools.modulation.double_difference`, or
+        :func:`poltools.modulation.lsq_modulation` (must contain
         ``q, u, sigma_q, sigma_u``; ``cov_qu`` optional).
     I0 : float
         Total intensity flux (for the scalar summary / SNR reference).
     name : str
         Source label.
     method : str
-        "A" or "B".
+        Reduction label recorded in the result metadata, e.g. "double_ratio",
+        "double_difference", or "lsq".
     estimator : str
         Debiasing estimator to report as ``p_mas`` default ("mas", "wk", "naive").
     provenance : dict, optional

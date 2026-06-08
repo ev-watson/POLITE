@@ -11,8 +11,7 @@ reusing ``caltools`` I/O + detector noise model and the ``AnalysisResult``
 contract (here :class:`StokesResult`).
 
 All reduction/error methods are from peer-reviewed / user-provided sources
-(CLAUDE.md Sources A/B); see ``docs/polarimetry/01_research_map.md`` for the
-provenance ledger.
+(CLAUDE.md Sources A/B); each function's docstring cites its specific source.
 
 Quick start
 -----------
@@ -21,7 +20,7 @@ Quick start
 >>> paths = pt.simulate_sequence(scene, cfg, out_dir="FITSDATA/SIM", rng=rng,
 ...                              shape=(512, 512))
 >>> results = pt.reduce_to_stokes([str(p) for p in paths], cfg,
-...                               o_positions=positions, method="A")
+...                               o_positions=positions, method="double_ratio")
 """
 
 __version__ = "0.1.0"
@@ -68,10 +67,10 @@ from .photometry import (
 
 # --- Modulation → q,u ---
 from .modulation import (
-    method_a_double_difference,
-    method_a_double_ratio,
-    method_b_lsq,
-    ratio_R,
+    double_difference,
+    double_ratio,
+    lsq_modulation,
+    ratio_r,
 )
 
 # --- Stokes assembly ---
@@ -114,8 +113,7 @@ __all__ = [
     "detect_sources", "pair_oe", "measure_fluxes", "measure_pair",
     "photometer_sequence",
     # modulation
-    "ratio_R", "method_a_double_ratio", "method_a_double_difference",
-    "method_b_lsq",
+    "ratio_r", "double_ratio", "double_difference", "lsq_modulation",
     # stokes
     "assemble_stokes", "polarization_fraction_angle",
     # errors

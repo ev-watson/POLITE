@@ -1,7 +1,8 @@
 """
 poltools.errors — Publication-grade polarization error metrics & debiasing.
 
-All estimators are sourced from the Phase 1 research map (Sources A/B):
+All estimators are sourced from peer-reviewed / user-provided literature
+(CLAUDE.md Sources A/B); each function cites its specific source:
 
 * Residual σ_P from the modulation fit — Magalhães, Benedetti & Roland (1984) /
   SOLVEPOL (Ramírez et al. 2017, Source B).
@@ -79,7 +80,7 @@ def debias_mas(p: float, sigma_p: float, b2: float = None) -> float:
         Polarization uncertainty.
     b2 : float, optional
         Noise-bias parameter b². Defaults to the canonical equal-variance value
-        ``b² = σ_p²`` (research map §3.4; Montier II eq. 15 canonical case).
+        ``b² = σ_p²`` (Montier II eq. 15 canonical case).
     """
     if b2 is None:
         b2 = sigma_p ** 2
@@ -170,9 +171,10 @@ def sigma_theta_nkc(snr: float, conf: float = 0.6827) -> float:
 
 
 # --------------------------------------------------------------------------- #
-# Analytic propagation through the double-difference ratio (Method A)
+# Analytic propagation through the normalized ratio R
+# (used by double_difference and lsq_modulation)
 # --------------------------------------------------------------------------- #
-def sigma_R(f_o: float, f_e: float, sig_o: float, sig_e: float) -> float:
+def sigma_r(f_o: float, f_e: float, sig_o: float, sig_e: float) -> float:
     """Uncertainty on ``R = (f_e − f_o)/(f_e + f_o)`` by error propagation.
 
     ``σ_R² = 4/S⁴ · (f_o² σ_e² + f_e² σ_o²)`` with ``S = f_e + f_o``.

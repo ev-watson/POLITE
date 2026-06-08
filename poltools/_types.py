@@ -16,8 +16,9 @@ Conventions (fixed once, used everywhere)
 * The two analyzed beams of the Savart plate are labelled ``o`` (ordinary) and
   ``e`` (extraordinary). By convention here the **e-beam carries the analyzer
   +Q' axis** so that the double-difference ratio
-  ``R = (F_e - F_o)/(F_e + F_o) = q cos4θ + u sin4θ`` reproduces the research-map
-  formula literally. The absolute sign/zero-point of the position angle is fixed
+  ``R = (F_e - F_o)/(F_e + F_o) = q cos4θ + u sin4θ`` reproduces the ideal-HWP
+  modulation formula literally. The absolute sign/zero-point of the position
+  angle is fixed
   by standard-star calibration, so this label choice is immaterial to science.
 """
 
@@ -72,7 +73,8 @@ class PolConfig:
         Arcsec per pixel (QHY268M on CDK20 ~ 0.224).
     hwp_angles_deg : tuple of float
         HWP positions in the modulation sequence (deg). Default is the minimal
-        4-angle set spanning q and u (Method A); N>=4 supported (Method B).
+        4-angle set spanning q and u (double_ratio / double_difference); N>=4
+        supported (lsq_modulation).
     retardance_deg : float
         Retarder retardance delta (HWP = 180; 90 reserved for a future QWP).
     instrument_rotator_deg : float

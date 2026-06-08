@@ -12,8 +12,8 @@ Provenance (CLAUDE.md Sources A/B)
   DBIP/Masiero 2007 and DUSTPol).
 * The ideal-HWP modulation
   ``I'_e = ½[I + Q cos4θ + U sin4θ]``, ``I'_o = ½[I − Q cos4θ − U sin4θ]``
-  reproduced by :func:`oe_intensities` is exactly research-map §2 (Masiero 2007,
-  Source B; DUSTPol §2.1, Source A).
+  reproduced by :func:`oe_intensities` is exactly the ideal-HWP modulation
+  (Masiero 2007, Source B; DUSTPol §2.1, Source A).
 * The real-retarder depolarization scaling ``∝ (1 − cos δ)`` (Masiero 2007,
   Source B) is captured by using a general retardance ``δ`` rather than the
   ideal δ=180°.

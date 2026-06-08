@@ -21,7 +21,7 @@ def test_end_to_end_2d_injection_recovery(cfg, rng, tmp_path):
                                  seeing_arcsec=2.0, sky_e_per_px=80.0, rng=rng,
                                  shape=(256, 256))
     res = pt.reduce_to_stokes([str(p) for p in paths], cfg, o_positions=positions,
-                              names=["s0", "s1"], method="A",
+                              names=["s0", "s1"], method="double_ratio",
                               r_ap=7, r_in=12, r_out=20, bias_adu=1000.0)
     assert len(res) == 2
     for r, (qt, ut) in zip(res, truth):
@@ -40,9 +40,9 @@ def test_methods_a_and_b_agree(cfg, rng, tmp_path):
                                  seeing_arcsec=2.0, sky_e_per_px=60.0, rng=rng,
                                  shape=(256, 256))
     rA = pt.reduce_to_stokes([str(p) for p in paths], cfg8, o_positions=positions,
-                             method="A", r_ap=7, r_in=12, r_out=20)[0]
+                             method="double_ratio", r_ap=7, r_in=12, r_out=20)[0]
     rB = pt.reduce_to_stokes([str(p) for p in paths], cfg8, o_positions=positions,
-                             method="B", r_ap=7, r_in=12, r_out=20)[0]
+                             method="lsq", r_ap=7, r_in=12, r_out=20)[0]
     assert rA.scalar_summary["q"] == pytest.approx(rB.scalar_summary["q"], abs=3e-3)
     assert rA.scalar_summary["u"] == pytest.approx(rB.scalar_summary["u"], abs=3e-3)
 
@@ -54,7 +54,7 @@ def test_pull_distribution_is_unit_normal(q_true, u_true, rng):
     pulls_q, pulls_u = [], []
     for _ in range(n_trials):
         bfs = make_beamfluxes(q_true, u_true, 2.0e5, ANGLES8, rng=rng)
-        B = pt.method_b_lsq(bfs)
+        B = pt.lsq_modulation(bfs)
         pulls_q.append((B["q"] - q_true) / B["sigma_q"])
         pulls_u.append((B["u"] - u_true) / B["sigma_u"])
     pulls_q = np.array(pulls_q)
@@ -76,7 +76,7 @@ def test_calibration_applied_in_pipeline(cfg, rng, tmp_path):
                                  shape=(256, 256), ip=(q0, u0))
     calib = pt.PolCalibration(q0=q0, u0=u0)
     res = pt.reduce_to_stokes([str(p) for p in paths], cfg, o_positions=positions,
-                              method="A", calibration=calib,
+                              method="double_ratio", calibration=calib,
                               r_ap=7, r_in=12, r_out=20)[0]
     s = res.scalar_summary
     assert abs(s["q"] - q_true) < 4 * s["sigma_q"] + 1e-3

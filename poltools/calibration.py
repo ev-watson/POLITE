@@ -1,8 +1,8 @@
 """
 poltools.calibration — Standard-star calibration (Mueller/IP chain inversion).
 
-Implements the publication calibration steps (research map §4; Masiero 2007 §3,
-DUSTPol §3, Serkowski 1974 — Sources B/A):
+Implements the publication calibration steps (Masiero 2007 §3, DUSTPol §3,
+Serkowski 1974 — Sources B/A):
 
 1. **Instrumental polarization** (q0, u0) from *unpolarized* standards
    (true p≈0 ⇒ measured q,u = IP). Subtract in q–u space.
@@ -103,7 +103,7 @@ def apply_efficiency(q: float, u: float, efficiency: float) -> Tuple[float, floa
 class PolCalibration:
     """Bundled calibration: IP subtraction, PA zero-point, efficiency.
 
-    Apply order (research map §4): IP → efficiency → PA zero-point.
+    Apply order: IP → efficiency → PA zero-point.
     """
 
     q0: float = 0.0

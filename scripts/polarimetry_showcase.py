@@ -9,8 +9,8 @@ the Stokes parameters with publication-grade error metrics — the deliverable t
 original request asked for.
 
 It exercises all four science regimes (stellar few-%, ISM 1–5%, solar-system
-sub-% high-SNR, supernova sub-%), demonstrates Method A (double-ratio) vs
-Method B (LSQ) agreement, MAS debiasing of the low-SNR case, instrumental-
+sub-% high-SNR, supernova sub-%), demonstrates double-ratio vs LSQ-modulation
+agreement, MAS debiasing of the low-SNR case, instrumental-
 polarization + efficiency calibration from standards, and a Monte-Carlo pull
 test, writing figures and a results table under docs/polarimetry/.
 
@@ -136,21 +136,21 @@ def main():
         r_ap=R_AP, r_in=R_IN, r_out=R_OUT, bias_adu=BIAS,
     )
 
-    banner("4. MODULATION -> q,u  (Method A double-ratio + Method B LSQ)")
-    raw_A, raw_B = {}, {}
+    banner("4. MODULATION -> q,u  (double-ratio + LSQ modulation)")
+    raw_dratio, raw_lsq = {}, {}
     for nm in names:
         bfs = flux_by_src[nm]
-        raw_A[nm] = pt.method_a_double_ratio(bfs)
-        raw_B[nm] = pt.method_b_lsq(bfs)
+        raw_dratio[nm] = pt.double_ratio(bfs)
+        raw_lsq[nm] = pt.lsq_modulation(bfs)
     for nm in names:
-        a, b = raw_A[nm], raw_B[nm]
-        print(f"  {nm:16s} A: q={a['q']:+.4f} u={a['u']:+.4f}   "
-              f"B: q={b['q']:+.4f} u={b['u']:+.4f}  chi2={b['chi2']:.1f}/{b['dof']}")
+        a, b = raw_dratio[nm], raw_lsq[nm]
+        print(f"  {nm:16s} double-ratio: q={a['q']:+.4f} u={a['u']:+.4f}   "
+              f"LSQ: q={b['q']:+.4f} u={b['u']:+.4f}  chi2={b['chi2']:.1f}/{b['dof']}")
 
     banner("5. CALIBRATION from standard stars (IP, efficiency)")
     unpol = [nm for (nm, *_rest, role, _p) in FIELD if role == "unpol"]
-    q_ip = [raw_A[nm]["q"] for nm in unpol]
-    u_ip = [raw_A[nm]["u"] for nm in unpol]
+    q_ip = [raw_dratio[nm]["q"] for nm in unpol]
+    u_ip = [raw_dratio[nm]["u"] for nm in unpol]
     q0, u0, _ = cal.fit_instrumental_polarization(q_ip, u_ip)
     print(f"  fitted IP:  q0={q0:+.4f} u0={u0:+.4f}   (injected eff*IP="
           f"{EFF_TRUE*IP_TRUE[0]:+.4f},{EFF_TRUE*IP_TRUE[1]:+.4f})")
@@ -158,7 +158,7 @@ def main():
     # efficiency from the high-pol standard (IP-corrected)
     nm_std = "highpol_std"
     p_lit_std = dict((f[0], f[7]) for f in FIELD)[nm_std]
-    qc, uc = cal.apply_ip(raw_A[nm_std]["q"], raw_A[nm_std]["u"], q0, u0)
+    qc, uc = cal.apply_ip(raw_dratio[nm_std]["q"], raw_dratio[nm_std]["u"], q0, u0)
     eff = cal.fit_efficiency([np.hypot(qc, uc)], [p_lit_std])
     print(f"  fitted efficiency: {eff:.4f}   (injected {EFF_TRUE})")
 
@@ -169,14 +169,14 @@ def main():
                if role == "science"]
     results, table_rows = [], []
     for nm, p_true, th_true in science:
-        qu = dict(raw_A[nm])
+        qu = dict(raw_dratio[nm])
         qc, uc = calib.apply(qu["q"], qu["u"])
         qu["q"], qu["u"] = qc, uc
         if eff not in (0.0, 1.0):
             qu["sigma_q"] /= eff
             qu["sigma_u"] /= eff
         I0 = float(np.mean([b.f_o + b.f_e for b in flux_by_src[nm]]))
-        res = pt.assemble_stokes(qu, I0=I0, name=nm, method="A", estimator="mas")
+        res = pt.assemble_stokes(qu, I0=I0, name=nm, method="double_ratio", estimator="mas")
         results.append(res)
         s = res.scalar_summary
         table_rows.append((nm, p_true, th_true, s))
@@ -197,7 +197,7 @@ def main():
             fo = rng.poisson(Io * 3.0e5)
             fe = rng.poisson(Ie * 3.0e5)
             bfs.append(BeamFlux(th, fo, fe, np.sqrt(max(fo, 1)), np.sqrt(max(fe, 1))))
-        B = pt.method_b_lsq(bfs)
+        B = pt.lsq_modulation(bfs)
         pulls_q.append((B["q"] - q_t) / B["sigma_q"])
         pulls_u.append((B["u"] - u_t) / B["sigma_u"])
     pulls = np.array(pulls_q + pulls_u)
@@ -208,7 +208,7 @@ def main():
     # modulation curves for three representative targets
     fig, axes = plt.subplots(1, 3, figsize=(13, 3.4))
     for ax, nm in zip(axes, ["stellar_eps_aur", "ism_dust", "supernova"]):
-        pplt.plot_modulation_curve(flux_by_src[nm], raw_B[nm]["q"], raw_B[nm]["u"],
+        pplt.plot_modulation_curve(flux_by_src[nm], raw_lsq[nm]["q"], raw_lsq[nm]["u"],
                                    ax=ax, title=nm)
     fig.tight_layout()
     fig.savefig(FIGDIR / "fig_modulation.png", dpi=130)
@@ -246,7 +246,7 @@ def main():
     # results table (markdown)
     lines = ["# POLITE polarimetry showcase — results\n",
              f"Seed {SEED}; QHY268M {sensor.nx}×{sensor.ny}; {len(ANGLES8)} HWP angles; "
-             f"Method A (double-ratio), MAS debiasing.\n",
+             f"double-ratio reduction, MAS debiasing.\n",
              f"Injected IP=({IP_TRUE[0]:+.4f},{IP_TRUE[1]:+.4f}), efficiency={EFF_TRUE}; "
              f"fitted IP=({q0:+.4f},{u0:+.4f}), efficiency={eff:.4f}.\n",
              f"MC pull: mean={pulls.mean():+.3f}, std={pulls.std(ddof=1):.3f} (target 0,1).\n",

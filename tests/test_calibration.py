@@ -1,4 +1,4 @@
-"""Standard-star calibration: IP, PA zero-point, efficiency (research map §4)."""
+"""Standard-star calibration: IP, PA zero-point, efficiency."""
 
 import numpy as np
 import pytest
