@@ -22,6 +22,31 @@ from astropy.io import fits
 
 
 @dataclass
+class PolarimetryCards:
+    """Optional polarimetry header block (HWP + α-BBO Savart dual-beam metadata).
+
+    Mirrors ``poltools.io.POL_KEYWORDS`` so simulated and real POLITE frames carry
+    identical cards (the keyword/grouping is what the reduction path reads). All
+    fields are optional; only the set ones are written. ``INSTROT`` is the **PWI4
+    field-rotator** angle. The Savart material/thickness default to the installed
+    α-BBO 18 mm plate; the per-band ``BEAMSEP``/``BEAMPA`` are measured from flats.
+    """
+
+    hwp_angle_deg: Optional[float] = None             # HWPANG
+    retardance_deg: Optional[float] = None            # RETARD (HWP nominal 180)
+    instrument_rotator_deg: Optional[float] = None    # INSTROT (PWI4 rotator)
+    pol_beam: Optional[str] = "dual"                  # POLBEAM
+    pol_seq_id: Optional[str] = None                  # POLSEQ
+    pol_seq_index: Optional[int] = None               # POLSEQN
+    pol_efficiency: Optional[float] = None            # POLEFF
+    beam_sep_px: Optional[float] = None               # BEAMSEP
+    beam_pa_deg: Optional[float] = None               # BEAMPA
+    savart_material: Optional[str] = "alpha-BBO"      # SAVMAT
+    savart_thickness_mm: Optional[float] = 18.0       # SAVTHK
+    eff_wavelength_nm: Optional[float] = None          # WAVELEN
+
+
+@dataclass
 class CaptureConfig:
     host: str = "localhost:32323"      # e.g. "192.168.1.10:11111"
     camera_index: int = 0
@@ -57,6 +82,9 @@ class CaptureConfig:
     # Optional WCS (Celestial TAN example). Supply if you have a plate solution.
     # Keys should be valid FITS keywords: CRPIX1, CRVAL1, CD1_1, CTYPE1, etc.
     wcs_cards: Dict[str, Any] = field(default_factory=dict)
+
+    # Optional polarimetry block (HWP + α-BBO Savart). None for ordinary imaging.
+    polarimetry: Optional["PolarimetryCards"] = None
 
     # Extra instrument/pipeline cards.
     extra_cards: Dict[str, Any] = field(default_factory=dict)
@@ -108,7 +136,7 @@ def _set_card(hdr: fits.Header, key: str, value: Any, comment: Optional[str] = N
         hdr[key] = (value, comment)
 
 
-def _build_header(c: Camera, cfg: CaptureConfig, data_dtype: np.dtype, shape: Tuple[int, ...]) -> fits.Header:
+def _build_header(c: CameraDevice, cfg: CaptureConfig, data_dtype: np.dtype, shape: Tuple[int, ...]) -> fits.Header:
     hdr = fits.Header()
 
     # Minimal provenance comment.
@@ -168,6 +196,22 @@ def _build_header(c: Camera, cfg: CaptureConfig, data_dtype: np.dtype, shape: Tu
 
     # Filter wheel keyword conventions vary; include a simple one if supplied.
     _set_card(hdr, "FILTER", cfg.filter_name, "Filter name")
+
+    # Optional polarimetry block (mirrors poltools.io so real frames match sim).
+    pol = cfg.polarimetry
+    if pol is not None:
+        _set_card(hdr, "HWPANG", pol.hwp_angle_deg, "Half-wave-plate angle [deg]")
+        _set_card(hdr, "RETARD", pol.retardance_deg, "Retarder retardance delta [deg]")
+        _set_card(hdr, "INSTROT", pol.instrument_rotator_deg, "PWI4 field-rotator angle [deg]")
+        _set_card(hdr, "POLBEAM", pol.pol_beam, "Beam(s) recorded (o/e/dual)")
+        _set_card(hdr, "POLSEQ", pol.pol_seq_id, "Polarimetry sequence identifier")
+        _set_card(hdr, "POLSEQN", pol.pol_seq_index, "Index within polarimetry sequence")
+        _set_card(hdr, "POLEFF", pol.pol_efficiency, "Polarization (modulation) efficiency")
+        _set_card(hdr, "BEAMSEP", pol.beam_sep_px, "o<->e beam separation [px]")
+        _set_card(hdr, "BEAMPA", pol.beam_pa_deg, "o->e split position angle [deg]")
+        _set_card(hdr, "SAVMAT", pol.savart_material, "Savart-plate material")
+        _set_card(hdr, "SAVTHK", pol.savart_thickness_mm, "Savart-plate thickness [mm]")
+        _set_card(hdr, "WAVELEN", pol.eff_wavelength_nm, "Filter effective wavelength [nm]")
 
     # Pointing/airmass (only if you provide it)
     _set_card(hdr, "AIRMASS", cfg.airmass, "Airmass at start")

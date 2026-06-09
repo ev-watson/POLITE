@@ -3,10 +3,13 @@
 POLITE polarimetry end-to-end showcase.
 
 Generates simulated 2-D imaging FITS frames from the POLITE telescope chain
-(QHY268M + HWP + Savart dual beam), runs them through the full poltools
-reduction pipeline, calibrates against simulated standard stars, and extracts
-the Stokes parameters with publication-grade error metrics — the deliverable the
-original request asked for.
+(CDK20 → PWI4 rotator → L3 cut → HWP → ZWO EFW → α-BBO Savart 18 mm → QHY268M),
+runs them through the full poltools reduction pipeline, calibrates against
+simulated standard stars, and extracts the Stokes parameters with
+publication-grade error metrics — the deliverable the original request asked for.
+
+The α-BBO split is per-filter (dispersive); this showcase runs in one EFW band
+(Photometric V) registered via ``default_efw_filters`` / ``for_filter``.
 
 It exercises all four science regimes (stellar few-%, ISM 1–5%, solar-system
 sub-% high-SNR, supernova sub-%), demonstrates double-ratio vs LSQ-modulation
@@ -45,19 +48,25 @@ FIGDIR = ROOT / "docs" / "polarimetry" / "figures"
 FIGDIR.mkdir(parents=True, exist_ok=True)
 RESULTS_MD = ROOT / "docs" / "polarimetry" / "showcase_results.md"
 
-# ---- instrument configuration (QHY268M on CDK20, Savart dual beam) ---------
+# ---- instrument configuration (QHY268M on CDK20, α-BBO Savart dual beam) ----
+# The α-BBO Savart split is dispersive -> per-filter geometry. We register the
+# ZWO 5-slot EFW and run in one band (Photometric V); the placeholder 60-px split
+# is the same across bands here (real per-band BEAMSEP comes from flats, Source A).
+SEP_PX = 60.0
+SHOW_FILTER = "Photometric V"
 sensor = SensorConfig(nx=512, ny=512, pixel_size_um=3.76, gain_e_per_adu=1.0,
                       temperature_c=-10.0, sensor_name="QHY268M")
 ANGLES8 = tuple(i * 22.5 for i in range(8))
 cfg = pt.PolConfig(
     sensor=sensor,
-    beam=pt.BeamGeometry(separation_px=60.0, position_angle_deg=0.0),
+    beam=pt.BeamGeometry(separation_px=SEP_PX, position_angle_deg=0.0),
     plate_scale_arcsec=0.224,
     hwp_angles_deg=ANGLES8,
     retardance_deg=180.0,
+    filters=pt.default_efw_filters(SEP_PX),
     read_noise_e=3.5,
     full_well_e=51000.0,
-)
+).for_filter(SHOW_FILTER)
 
 # ---- injected systematics (to be calibrated out) --------------------------
 IP_TRUE = (0.004, -0.003)     # instrumental polarization q0,u0
@@ -66,7 +75,8 @@ SKY_E = 80.0
 EXPTIME = 20.0
 # Seeing/aperture/separation chosen so the brightest beam stays below the
 # QHY268M full well (51 ke-): FWHM ~ 9.8 px (sigma 4.17), peak of an 8e6-e-
-# source ~ 37 ke- < FWC.  Beam sep 60 px = 6.1 FWHM -> clean o/e separation.
+# source ~ 37 ke- < FWC.  Beam sep 60 px = 6.1 FWHM -> clean o/e separation
+# (per-band α-BBO separation in real data is measured from flats).
 SEEING = 2.2                  # arcsec
 BIAS = 1000.0
 R_AP, R_IN, R_OUT = 13.0, 18.0, 29.0

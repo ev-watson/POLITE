@@ -12,6 +12,31 @@ from .camera_ops import ExposureSettings, capture_image
 
 
 @dataclass
+class PolarimetryCards:
+    """Optional polarimetry header block (HWP + α-BBO Savart dual-beam metadata).
+
+    Mirrors ``poltools.io.POL_KEYWORDS`` so simulated and real POLITE frames carry
+    identical cards. All fields optional; only the set ones are written.
+    ``INSTROT`` is the **PWI4 field-rotator** angle; the Savart material/thickness
+    default to the installed α-BBO 18 mm plate; per-band ``BEAMSEP``/``BEAMPA`` are
+    measured from flats.
+    """
+
+    hwp_angle_deg: Optional[float] = None             # HWPANG
+    retardance_deg: Optional[float] = None            # RETARD (HWP nominal 180)
+    instrument_rotator_deg: Optional[float] = None    # INSTROT (PWI4 rotator)
+    pol_beam: Optional[str] = "dual"                  # POLBEAM
+    pol_seq_id: Optional[str] = None                  # POLSEQ
+    pol_seq_index: Optional[int] = None               # POLSEQN
+    pol_efficiency: Optional[float] = None            # POLEFF
+    beam_sep_px: Optional[float] = None               # BEAMSEP
+    beam_pa_deg: Optional[float] = None               # BEAMPA
+    savart_material: Optional[str] = "alpha-BBO"      # SAVMAT
+    savart_thickness_mm: Optional[float] = 18.0       # SAVTHK
+    eff_wavelength_nm: Optional[float] = None          # WAVELEN
+
+
+@dataclass
 class FitsHeaderConfig:
     imagetyp: str = "LIGHT"
     object_name: Optional[str] = None
@@ -25,6 +50,7 @@ class FitsHeaderConfig:
     dec: Optional[str] = None
     ha: Optional[str] = None
     equinox: Optional[float] = 2000.0
+    polarimetry: Optional[PolarimetryCards] = None
     wcs_cards: Dict[str, Any] = field(default_factory=dict)
     extra_cards: Dict[str, Any] = field(default_factory=dict)
     add_checksum: bool = True
@@ -78,7 +104,7 @@ def build_header(
 
     try:
         off = camera.Offset
-        if isinstance(off, int):
+        if isinstance(off, (int, np.integer)):
             _set_card(hdr, "OFFSET", int(off), "Camera offset setting")
             _set_card(hdr, "PEDESTAL", int(off), "Bias pedestal (if applicable)")
         else:
@@ -92,6 +118,22 @@ def build_header(
         pass
 
     _set_card(hdr, "FILTER", cfg.filter_name, "Filter name")
+
+    # Optional polarimetry block (mirrors poltools.io so real frames match sim).
+    pol = cfg.polarimetry
+    if pol is not None:
+        _set_card(hdr, "HWPANG", pol.hwp_angle_deg, "Half-wave-plate angle [deg]")
+        _set_card(hdr, "RETARD", pol.retardance_deg, "Retarder retardance delta [deg]")
+        _set_card(hdr, "INSTROT", pol.instrument_rotator_deg, "PWI4 field-rotator angle [deg]")
+        _set_card(hdr, "POLBEAM", pol.pol_beam, "Beam(s) recorded (o/e/dual)")
+        _set_card(hdr, "POLSEQ", pol.pol_seq_id, "Polarimetry sequence identifier")
+        _set_card(hdr, "POLSEQN", pol.pol_seq_index, "Index within polarimetry sequence")
+        _set_card(hdr, "POLEFF", pol.pol_efficiency, "Polarization (modulation) efficiency")
+        _set_card(hdr, "BEAMSEP", pol.beam_sep_px, "o<->e beam separation [px]")
+        _set_card(hdr, "BEAMPA", pol.beam_pa_deg, "o->e split position angle [deg]")
+        _set_card(hdr, "SAVMAT", pol.savart_material, "Savart-plate material")
+        _set_card(hdr, "SAVTHK", pol.savart_thickness_mm, "Savart-plate thickness [mm]")
+        _set_card(hdr, "WAVELEN", pol.eff_wavelength_nm, "Filter effective wavelength [nm]")
 
     _set_card(hdr, "AIRMASS", cfg.airmass, "Airmass at start")
     _set_card(hdr, "RA", cfg.ra, "Right Ascension (sexagesimal)")

@@ -1,12 +1,20 @@
 """
 poltools.simulate — Forward model of the POLITE telescope chain.
 
+Optical chain modelled (real light path):
+``Sky → CDK20 (D=0.508 m, f/6.8) → PWI4 Focuser/Rotator (α) → Astronomik L3
+UV/IR-cut → rotating HWP (θ, δ) → ZWO 5-slot EFW (B/V/R/Clear/Dark) → α-BBO
+Savart plate (18 mm; dispersive o/e split) → QHY268M (IMX571, 0.224″/px)``.
+The L3 and EFW filters are treated as ideal (scalar × identity) and so do not
+alter q,u; the EFW selects the band whose **per-filter** Savart separation
+(``cfg.beam`` via :meth:`PolConfig.for_filter`) sets the o/e offset.
+
 Renders 2-D imaging FITS frames byte-compatible with the real reduction path:
-for each HWP angle it maps every source's astrophysical
-Stokes vector through the Mueller chain to ordinary/extraordinary fluxes, places
-the two PSFs on the detector grid (origin upper-left), injects the QHY268M
+for each HWP angle it maps every source's astrophysical Stokes vector through the
+Mueller chain (PWI4 rotator → HWP → analyzer) to ordinary/extraordinary fluxes,
+places the two PSFs on the detector grid (origin upper-left), injects the QHY268M
 detector physics (shot noise, dark, read noise, full-well clipping, gain,
-bias pedestal, BZERO=32768), and writes a FITS file with the HWP-angle keyword.
+bias pedestal, BZERO=32768), and writes a FITS file with the polarimetry keywords.
 
 The detector parameters come from ``caltools.SensorConfig`` so the simulator is
 fully detector-parameterized (QHY268M default; legacy CCD selectable).
@@ -66,6 +74,7 @@ def render_frame(
     bias_adu: float = 1000.0,
     rotator_deg: Optional[float] = None,
     add_dark: bool = True,
+    dark_frame: Optional[np.ndarray] = None,
     return_truth: bool = False,
 ):
     """Render one detector frame (physical ADU) for a single HWP angle.
@@ -87,6 +96,13 @@ def render_frame(
         polarization q0/u0, per-beam throughput ratio for flat-field tests).
     prnu : ndarray, optional
         Per-pixel response (PRNU) map multiplying the photo-electron image.
+    add_dark : bool
+        Add the scalar dark accumulation ``dark_rate·t`` before the Poisson draw.
+    dark_frame : ndarray, optional
+        Per-pixel dark accumulation (**electrons**) added in place of the scalar
+        — a master-dark with its FPN / hot-pixel structure (finding C-4), the
+        CMOS-faithful alternative to the flat ``dark_rate·t``. Overrides
+        ``add_dark`` when supplied.
     bias_adu : float
         Bias pedestal (ADU).
 
@@ -124,7 +140,14 @@ def render_frame(
         photo *= prnu
 
     electrons = photo.copy()
-    if add_dark:
+    if dark_frame is not None:
+        df = np.asarray(dark_frame, dtype=float)
+        if df.shape != electrons.shape:
+            raise ValueError(
+                f"dark_frame shape {df.shape} != frame shape {electrons.shape}"
+            )
+        electrons += df  # master-dark with FPN / hot-pixel structure (C-4)
+    elif add_dark:
         electrons += cfg.dark_rate_e_per_s * exptime_s
 
     # full-well saturation, then shot noise, then read noise

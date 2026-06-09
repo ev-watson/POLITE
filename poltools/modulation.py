@@ -170,6 +170,14 @@ def lsq_modulation(beam_fluxes: List[BeamFlux]) -> Dict[str, object]:
     Solves ``z_i = q cos4ψ_i + u sin4ψ_i`` by (optionally weighted) linear
     least squares. Returns ``q, u``, their covariance, the per-fit χ², the
     SOLVEPOL residual σ_P, and the model/residual arrays.
+
+    .. warning::
+       Unlike :func:`double_ratio` (the flat-field-independent **primary**
+       method, where per-beam throughput cancels in the ratio-of-ratios), this
+       fit assumes the o/e beams are **matched / pre-normalized**: it does *not*
+       cancel pixel-to-pixel response (PRNU/flat-field) between the o and e
+       aperture positions (finding C-7). On real CMOS frames, flat-field first
+       (the ``reduction.md`` PRNU map) before using ``lsq`` as a headline result.
     """
     bfs = sorted(beam_fluxes, key=lambda b: b.hwp_deg)
     n = len(bfs)

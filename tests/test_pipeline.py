@@ -83,8 +83,9 @@ def test_double_difference_end_to_end(cfg, rng, tmp_path):
 
 
 def test_repeat_angle_frames_combined_not_dropped(cfg, rng, tmp_path):
-    """Multiple frames at the same HWP angle are mean-combined, not silently
-    overwritten (the old inline dict-grouping kept only the last frame)."""
+    """Multiple frames at the same HWP angle are median-combined, not silently
+    overwritten (the old inline dict-grouping kept only the last frame). For
+    N=2 the median equals the mean, so recovery is unchanged."""
     positions = [(128.0, 128.0)]
     qt, ut = 0.03, -0.02
     scene = pt.make_scene(positions, [(1, qt, ut, 0)], [6e6])
@@ -104,6 +105,47 @@ def test_repeat_angle_frames_combined_not_dropped(cfg, rng, tmp_path):
     s = res[0].scalar_summary
     assert abs(s["q"] - qt) < 4 * s["sigma_q"] + 1e-3
     assert abs(s["u"] - ut) < 4 * s["sigma_u"] + 1e-3
+
+
+def test_median_combine_rejects_cosmic_ray(cfg, rng, tmp_path):
+    """Repeat frames are MEDIAN-combined (SOLVEPOL, Ramírez et al. 2017; the
+    CMOS-reduction median-robustness rationale vs RTN/S&P, Alarcón+2023), so a
+    cosmic ray landing in one frame's aperture is rejected — not smeared into
+    the flux as a mean would. Three exposures per angle; one is corrupted."""
+    from astropy.io import fits
+    positions = [(128.0, 128.0)]
+    qt, ut = 0.03, -0.02
+    scene = pt.make_scene(positions, [(1, qt, ut, 0)], [6e6])
+    seqs = [pt.simulate_sequence(scene, cfg, out_dir=tmp_path / s, exptime_s=15.0,
+                                 seeing_arcsec=2.0, sky_e_per_px=60.0, rng=rng,
+                                 shape=(256, 256), seq_id=s)
+            for s in ("A", "B", "C")]
+    allp = [str(p) for seq in seqs for p in seq]
+    # corrupt ONE frame at ONE angle: a saturating cosmic on the o-beam core
+    victim = str(seqs[1][0])
+    with fits.open(victim, mode="update", memmap=False) as hdul:
+        hdul[0].data[124:133, 124:133] = 60000.0
+        hdul.flush()
+
+    # the median rejects the cosmic; a mean would smear it into the o-aperture
+    # flux (this is the academic reason for median-combining).
+    grp = pt.group_by_hwp_angle(allp)
+    ang0 = sorted(grp)[0]
+    stack = np.array([pt.read_pol_frame(p)[0] for p in grp[ang0]])
+    dx, dy = cfg.beam.offset_xy()
+    o_xy, e_xy = (128.0, 128.0), (128.0 + dx, 128.0 + dy)
+    f_med, _ = pt.measure_fluxes(np.median(stack, axis=0), [o_xy, e_xy], cfg,
+                                 r_ap=7, r_in=12, r_out=20, bias_adu=1000.0)
+    f_mean, _ = pt.measure_fluxes(np.mean(stack, axis=0), [o_xy, e_xy], cfg,
+                                  r_ap=7, r_in=12, r_out=20, bias_adu=1000.0)
+    assert f_mean[0] > 1.2 * f_med[0]   # mean o-flux inflated; median rejects it
+
+    # end-to-end: the pipeline still recovers truth despite the cosmic
+    res = pt.reduce_to_stokes(allp, cfg, o_positions=positions,
+                              method="double_ratio", r_ap=7, r_in=12, r_out=20)[0]
+    s = res.scalar_summary
+    assert abs(s["q"] - qt) < 4 * s["sigma_q"] + 2e-3
+    assert abs(s["u"] - ut) < 4 * s["sigma_u"] + 2e-3
 
 
 def test_invalid_method_raises_even_with_no_detected_sources(cfg, rng, tmp_path):

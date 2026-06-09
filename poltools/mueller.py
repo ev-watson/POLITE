@@ -109,8 +109,13 @@ def system_mueller(hwp_deg: float, rotator_deg: float = 0.0,
                    M_tel: Optional[np.ndarray] = None) -> np.ndarray:
     """Full chain Mueller matrix up to (and including) one analyzer beam.
 
-    ``M = M_analyzer · M_HWP(θ,δ) · M_rotator(α) · M_telescope``.
-    The telescope Mueller (instrumental polarization) defaults to identity.
+    ``M = M_analyzer · M_HWP(θ,δ) · R_PWI4(α) · M_telescope``.
+
+    Ordering follows the real POLITE light path: CDK20 (``M_telescope``) →
+    **PWI4 field rotator** ``R_PWI4(α)`` → L3 cut filter → HWP(θ,δ) → EFW filter
+    → α-BBO Savart analyzer. The L3 and EFW filters are ideal (scalar × identity)
+    and commute, so they are omitted here (they do not alter q,u). The telescope
+    Mueller (instrumental polarization) defaults to identity.
     """
     M = M_linear_polarizer(analyzer_deg) @ M_hwp(hwp_deg, retardance_deg) @ M_rotator(rotator_deg)
     if M_tel is not None:
@@ -137,10 +142,15 @@ def oe_intensities(stokes: np.ndarray, hwp_deg: float,
     efficiency : float
         Polarization (modulation) efficiency in [0, 1]; scales the AC term.
     ip : (q0, u0)
-        Additive instrumental polarization injected ahead of the analyzer
-        (fractional). Used by the simulator to create a known IP to calibrate.
+        Additive instrumental polarization (fractional), injected on the incident
+        beam **upstream of the PWI4 rotator** — i.e. it models the **CDK20
+        (telescope) IP**, which therefore rotates with α. IP introduced *downstream*
+        of the rotator (L3 / EFW / Savart, fixed in the instrument frame) is not
+        separated here; it is absorbed by the standard-star IP calibration. Used by
+        the simulator to create a known IP to calibrate.
     rotator_deg : float
-        Instrument-rotator angle α.
+        **PWI4 field-rotator** angle α (deg); rotates the incident frame ahead of
+        the HWP.
 
     Returns
     -------

@@ -6,8 +6,14 @@ reuses ``caltools.io`` for reading (``memmap=False`` is mandatory for the
 BZERO=32768 unsigned-int frames written by TheSkyX / QHY cameras).
 
 FITS keyword conventions follow ``obs_utils/fits_routine.py`` for the shared
-cards, plus the polarimetry block below. These keywords should later be mirrored
-into ``obs_utils/fits_routine.py`` so real frames carry the same metadata.
+cards, plus the polarimetry block below. The same block is mirrored on the real
+acquisition path by ``PolarimetryCards`` in ``obs_utils/fits_routine.py`` and
+``alpyca_tools/fits_writer.py`` so acquired frames carry identical metadata.
+
+Real optical chain encoded by the polarimetry keywords:
+``Sky → CDK20 → PWI4 rotator (INSTROT) → L3 cut filter → HWP (HWPANG/RETARD)
+→ ZWO EFW (FILTER) → α-BBO Savart 18 mm (SAVMAT/SAVTHK; BEAMSEP/BEAMPA per band,
+dispersive) → QHY268M``.
 """
 
 from __future__ import annotations
@@ -27,14 +33,21 @@ from ._types import PolConfig
 POL_KEYWORDS = {
     "HWPANG": "Half-wave-plate angle [deg]",
     "RETARD": "Retarder retardance delta [deg]",
-    "INSTROT": "Instrument/field rotator angle [deg]",
+    "INSTROT": "PWI4 field-rotator angle [deg]",
     "POLBEAM": "Beam(s) recorded (o/e/dual)",
     "POLSEQ": "Polarimetry sequence identifier",
     "POLSEQN": "Index within polarimetry sequence",
     "POLEFF": "Polarization (modulation) efficiency",
     "PIXSCALE": "Plate scale [arcsec/pixel]",
     "EGAIN": "Conversion gain [e-/ADU]",
+    "SAVMAT": "Savart-plate material",
+    "SAVTHK": "Savart-plate thickness [mm]",
+    "WAVELEN": "Filter effective wavelength [nm]",
 }
+
+# α-BBO Savart-plate hardware constants (instrument metadata, not a method).
+SAVART_MATERIAL = "alpha-BBO"
+SAVART_THICKNESS_MM = 18.0
 
 
 def write_pol_fits(
@@ -92,6 +105,11 @@ def write_pol_fits(
     hdr["POLEFF"] = (float(efficiency), POL_KEYWORDS["POLEFF"])
     hdr["BEAMSEP"] = (float(cfg.beam.separation_px), "o<->e beam separation [px]")
     hdr["BEAMPA"] = (float(cfg.beam.position_angle_deg), "o->e split position angle [deg]")
+    hdr["SAVMAT"] = (SAVART_MATERIAL, POL_KEYWORDS["SAVMAT"])
+    hdr["SAVTHK"] = (SAVART_THICKNESS_MM, POL_KEYWORDS["SAVTHK"])
+    _fcfg = cfg.active_filter()
+    if _fcfg is not None and _fcfg.eff_wavelength_nm is not None:
+        hdr["WAVELEN"] = (float(_fcfg.eff_wavelength_nm), POL_KEYWORDS["WAVELEN"])
 
     if extra:
         for k, v in extra.items():
@@ -134,6 +152,22 @@ def group_by_hwp_angle(paths: List[Union[str, Path]]) -> Dict[float, List[str]]:
     for p in paths:
         hdr = fits.getheader(str(p))
         groups[round(_read_hwp_angle(hdr, p), 3)].append(str(p))
+    return {k: sorted(v) for k, v in groups.items()}
+
+
+def group_by_filter(paths: List[Union[str, Path]]) -> Dict[str, List[str]]:
+    """Group frame paths by EFW slot, read from the ``FILTER`` card.
+
+    The α-BBO Savart split is dispersive, so frames must be reduced **one band at
+    a time** with that band's :class:`~poltools._types.BeamGeometry`
+    (``cfg.for_filter(name)``). Frames missing a ``FILTER`` card fall into the
+    ``"UNKNOWN"`` bucket. Returns ``{filter_name: sorted_paths}``.
+    """
+    groups: Dict[str, List[str]] = defaultdict(list)
+    for p in paths:
+        hdr = fits.getheader(str(p))
+        name = str(hdr.get("FILTER", "UNKNOWN")).strip() or "UNKNOWN"
+        groups[name].append(str(p))
     return {k: sorted(v) for k, v in groups.items()}
 
 

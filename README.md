@@ -4,9 +4,17 @@ Observatory automation and detector characterization for a PlaneWave CDK20 + QHY
 
 ## Overview
 
-POLITE provides end-to-end observatory control — from mount startup and slewing through automated imaging sequences and calibration frame acquisition — alongside `caltools`, a detector characterization library for bias, dark, flat, noise, gain, linearity, and PRNU analysis.
+POLITE provides end-to-end observatory control — from mount startup and slewing through automated imaging sequences and calibration frame acquisition — alongside `caltools`, a detector characterization library for bias, dark, flat, noise, gain, linearity, and PRNU analysis, and `poltools`, a dual-beam imaging-polarimetry simulator + Stokes-extraction pipeline.
 
-The system interfaces with PlaneWave's PWI4 HTTP API for mount control and the ASCOM Alpaca REST protocol for camera and filter wheel operations. Night sessions are defined declaratively as target/frame plans and executed autonomously with logging, autoguiding, and dithering support.
+The instrument is a dual-beam (HWP + α-BBO Savart) imaging polarimeter. Its optical chain is:
+
+```
+Sky → PlaneWave CDK20 → PWI4 Focuser/Rotator → Astronomik L3 UV/IR-cut filter
+    → rotating Half-Wave Plate → ZWO 5-slot EFW (Photometric B, V, R, Clear, Dark)
+    → α-BBO Savart plate (18 mm) → QHY268M (IMX571) detector
+```
+
+The system interfaces with PlaneWave's PWI4 HTTP API for mount/rotator control and the ASCOM Alpaca REST protocol for camera and filter wheel operations. Night sessions are defined declaratively as target/frame plans and executed autonomously with logging, autoguiding, and dithering support.
 
 ## Project Structure
 
@@ -43,6 +51,19 @@ caltools/                Detector characterization library (v0.1.0)
   linearity.py           Linearity testing and error characterization
   prnu.py                Photo-response non-uniformity mapping
   plotting.py            Diagnostic plots
+
+poltools/                Imaging-polarimetry simulator + Stokes pipeline (v0.1.0)
+  mueller.py             Mueller forward model (HWP, PWI4 rotator, analyzer)
+  simulate.py            2-D FITS forward model of the telescope chain
+  _types.py              PolConfig, BeamGeometry, FilterConfig (per-band α-BBO)
+  io.py                  Polarimetry FITS keywords + filter/HWP grouping
+  photometry.py          Detection, o/e pairing, aperture photometry
+  modulation.py          double-ratio / double-difference / LSQ → q,u
+  errors.py              MAS debiasing, σ_θ (NK&C), residual σ_P
+  stokes.py              Stokes assembly (p, θ)
+  calibration.py         IP / efficiency / PA-zeropoint from standards
+  pipeline.py            reduce_to_stokes (per-filter, end-to-end)
+  plotting.py            Polarimetry diagnostic plots
 
 scripts/                 Night session automation scripts
 utils.py                 General-purpose astronomy utilities

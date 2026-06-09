@@ -6,6 +6,7 @@ datafiles/
 
 # compiled Python
 __pycache__/
+.pytest_cache/
 *.py[cod]
 *.pyo
 
@@ -26,6 +27,9 @@ CLAUDE.md
 prompts/
 reference-sheets/
 docs/
+reports/
+*.ipynb
+.gitignore
 
 # PDFs (reference materials)
 *.pdf

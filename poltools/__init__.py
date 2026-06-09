@@ -2,9 +2,19 @@
 poltools — Imaging polarimetry pipeline for the POLITE observatory.
 
 A telescope-chain **forward model** (simulator) + **Stokes-extraction pipeline**
-with publication-grade error metrics, for the dual-beam (HWP + Savart) imaging
-polarimeter. Linear (I, Q, U) now; full-Stokes-ready (4-vector / general
+with publication-grade error metrics, for the dual-beam (HWP + α-BBO Savart)
+imaging polarimeter. Linear (I, Q, U) now; full-Stokes-ready (4-vector / general
 retarder) architecture for a future quarter-wave-plate Stokes-V mode.
+
+Real optical chain::
+
+    Sky → CDK20 (D=0.508 m, f/6.8) → PWI4 Focuser/Rotator (α)
+        → Astronomik L3 UV/IR-cut → rotating HWP (θ, δ)
+        → ZWO 5-slot EFW (Photometric B, V, R, Clear, Dark)
+        → α-BBO Savart plate (18 mm; dispersive o/e split) → QHY268M
+
+The α-BBO split is **per-filter** (dispersive): use :func:`default_efw_filters`
+to register the EFW slots and :meth:`PolConfig.for_filter` to select a band.
 
 Design: a sibling of ``caltools`` (import graph ``poltools → caltools`` only),
 reusing ``caltools`` I/O + detector noise model and the ``AnalysisResult``
@@ -29,9 +39,11 @@ __version__ = "0.1.0"
 from ._types import (
     BeamFlux,
     BeamGeometry,
+    FilterConfig,
     PointSource,
     PolConfig,
     StokesResult,
+    default_efw_filters,
 )
 
 # --- Mueller forward model ---
@@ -50,6 +62,7 @@ from .simulate import make_scene, render_frame, simulate_sequence
 
 # --- I/O ---
 from .io import (
+    group_by_filter,
     group_by_hwp_angle,
     group_pol_sequence,
     read_pol_frame,
@@ -58,6 +71,7 @@ from .io import (
 
 # --- Photometry ---
 from .photometry import (
+    aperture_peaks,
     detect_sources,
     measure_fluxes,
     measure_pair,
@@ -100,17 +114,19 @@ from .pipeline import reduce_to_stokes
 __all__ = [
     "__version__",
     # types
-    "PolConfig", "BeamGeometry", "PointSource", "BeamFlux", "StokesResult",
+    "PolConfig", "BeamGeometry", "FilterConfig", "default_efw_filters",
+    "PointSource", "BeamFlux", "StokesResult",
     # mueller
     "stokes_vector", "M_rotator", "M_retarder", "M_hwp", "M_linear_polarizer",
     "system_mueller", "oe_intensities",
     # simulate
     "render_frame", "simulate_sequence", "make_scene",
     # io
-    "write_pol_fits", "read_pol_frame", "group_by_hwp_angle", "group_pol_sequence",
+    "write_pol_fits", "read_pol_frame", "group_by_hwp_angle", "group_by_filter",
+    "group_pol_sequence",
     # photometry
     "detect_sources", "pair_oe", "measure_fluxes", "measure_pair",
-    "photometer_sequence",
+    "photometer_sequence", "aperture_peaks",
     # modulation
     "ratio_r", "double_ratio", "double_difference", "lsq_modulation",
     # stokes
