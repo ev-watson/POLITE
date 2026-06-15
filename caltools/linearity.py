@@ -1,8 +1,5 @@
 """
-caltools.linearity — Detector linearity tests and residual metrics.
-
-Measures signal vs exposure linearity from a flat-field ramp and computes
-fractional residuals relative to the fitted response.
+caltools.linearity — Signal-vs-exposure linearity and fractional residuals.
 """
 
 from __future__ import annotations
@@ -51,7 +48,6 @@ def linearity_test(
 
     for exp in sorted(flat_groups.keys()):
         paths = flat_groups[exp]
-        # Compute mean of bias-subtracted frames
         signals = []
         for p in paths:
             frame = load_frame(p, roi=roi) - bias_roi
@@ -64,16 +60,13 @@ def linearity_test(
     mean_signals = np.array(mean_signals)
     std_signals = np.array(std_signals)
 
-    # Linear fit: S = slope * t + intercept
     coeffs = np.polyfit(exptimes, mean_signals, 1)
     slope = float(coeffs[0])
     intercept = float(coeffs[1])
 
-    # Predicted and residuals
     predicted = np.polyval(coeffs, exptimes)
     residuals = mean_signals - predicted
 
-    # R²
     ss_res = np.sum(residuals ** 2)
     ss_tot = np.sum((mean_signals - np.mean(mean_signals)) ** 2)
     r_squared = 1.0 - ss_res / ss_tot if ss_tot > 0 else 0.0
@@ -121,14 +114,11 @@ def linearity_error(
     residuals = meta["residuals_adu"]
     predicted = meta["predicted_adu"]
 
-    # Fractional linearity error: residual / fit * 100%
-    # Avoid division by zero at zero signal
     safe_pred = np.where(np.abs(predicted) > 1.0, predicted, 1.0)
     le_percent = (residuals / safe_pred) * 100.0
 
     max_le = float(np.max(np.abs(le_percent)))
 
-    # Linear range: exposure range where |LE| < 1%
     linear_mask = np.abs(le_percent) < 1.0
     if np.any(linear_mask):
         linear_exptimes = exptimes[linear_mask]

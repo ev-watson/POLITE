@@ -1,30 +1,23 @@
 """
-poltools.photometry — Source detection, o/e pairing, aperture photometry.
+poltools.photometry — Source detection, beam pairing, and aperture photometry.
 
-Uses the Astropy-affiliated ``photutils`` (per CLAUDE.md "prefer Astropy/AAS
-conventions"): ``DAOStarFinder`` for detection and
-``CircularAperture``/``CircularAnnulus``/``ApertureStats`` for concentric-
-aperture photometry with a sky annulus — the standard DBIP/SOLVEPOL operation
-(Source B). Photometric uncertainties use the CCD equation (source shot noise +
-sky + read noise + sky-estimation error).
+Each science source appears twice on the detector (ordinary and extraordinary
+beams). This module finds sources, pairs the two images using the known Savart
+offset, and measures aperture fluxes in electrons.
 
-CMOS-detector handling (QHY268M / IMX571; ``reduction.md``, Sources A/B):
-* the read-noise term accepts a **per-pixel read-noise map** (RTN/hot-pixel
-  tail), not just the scalar Gaussian core (finding C-1);
-* a **bad/hot-pixel mask** can be supplied — flagged pixels are repaired by
-  local interpolation (Astropy) before summing so they neither inflate the
-  aperture nor bias the sky median (finding C-2);
-* the reported σ is **suppressed by the effective number of combined frames**
-  (Stockmans et al. eq. 16, Source B: "...suppressed by √N for N exposures to
-  average over"); ``N`` for a mean, ``N/(π/2)`` for a median (finding C-3);
-* aperture peaks are checked against the saturation/linearity limit (C-6).
-Dark shot noise needs no separate term: the background is measured empirically
-from the annulus, whose pixels accumulate dark too, so ``bg_e`` already includes
-it (an explicit ``n_ap·D·t`` term would double-count — finding C-4).
+Uncertainties follow the standard CCD noise model: photon shot noise from the
+source and sky, read noise, and uncertainty in the sky estimate (Stockmans
+et al., eq. 16 for combined frames).
 
-Pixel convention: photutils positions are ``(x, y)`` with ``data[y, x]``,
-identical to the rest of poltools (origin upper-left is a display choice only).
-Fluxes are returned in **electrons**.
+CMOS-specific handling:
+
+* optional per-pixel read-noise map (captures random telegraph noise tails);
+* bad-pixel mask with local interpolation before summing apertures;
+* variance scaling when input frames were median-combined (effective frame
+  count is reduced by a factor π/2 for Gaussian noise);
+* flagging when an aperture peak hits saturation or the linearity limit.
+
+Positions are ``(x, y)`` in pixels; array indexing is ``data[y, x]``.
 """
 
 from __future__ import annotations
@@ -39,28 +32,20 @@ from photutils.aperture import (ApertureStats, CircularAnnulus,
                                 CircularAperture, aperture_photometry)
 from photutils.detection import DAOStarFinder
 
-# Variance inflation of a per-pixel median vs a mean for Gaussian noise: in the
-# large-N limit Var(median) -> (π/2)·σ²/N (Kenney & Keeping 1962), while the
-# mean attains σ²/N. For N <= 2 the median equals the mean (and N=1 is the frame
-# itself), so no penalty applies there. Used to turn a frame count into an
-# effective N for the σ suppression of finding C-3 (Stockmans et al., Source B).
+# Median combination inflates per-pixel variance by π/2 (Kenney & Keeping 1962).
 _MEDIAN_VAR_INFLATION = float(np.pi / 2.0)
-
-# Compact Gaussian kernel for repairing isolated bad/hot pixels by PSF-weighted
-# local interpolation (finding C-2). Small enough that a flagged pixel is filled
-# from its immediate neighbourhood (≈ local PSF/sky value).
 _BAD_PIXEL_KERNEL = Gaussian2DKernel(x_stddev=1.0)
+
+try:
+    photutils.future_column_names = True
+except Exception:  # pragma: no cover
+    pass
+
+from ._types import BeamFlux, BeamGeometry, PolConfig
 
 
 def _effective_n(n_combined: int, combine: str = "median") -> float:
-    """Effective number of independent frames for variance scaling (C-3).
-
-    Combining ``N`` equal-exposure frames suppresses the per-pixel (hence
-    aperture-summed) variance by ``N`` for a mean and by ``N/(π/2)`` for a
-    median (Stockmans et al. eq. 16, Source B). ``N <= 2`` is exact for the
-    median (median == frame for N=1, median == mean for N=2), so no median
-    penalty is applied there.
-    """
+    """Effective number of frames for variance scaling after stack combination."""
     n = max(int(n_combined), 1)
     if combine == "mean" or n <= 2:
         return float(n)
@@ -70,12 +55,7 @@ def _effective_n(n_combined: int, combine: str = "median") -> float:
 
 
 def _repair_bad_pixels(image: np.ndarray, bad_pixel_mask: np.ndarray) -> np.ndarray:
-    """Return a copy of ``image`` with masked pixels filled by interpolation.
-
-    Flagged pixels are set to NaN and replaced with a PSF-weighted local
-    estimate via ``astropy.convolution.interpolate_replace_nans`` (finding C-2);
-    any pixel with no finite neighbours falls back to the global median.
-    """
+    """Fill masked pixels by PSF-weighted local interpolation."""
     bad = np.asarray(bad_pixel_mask, dtype=bool)
     if bad.shape != image.shape:
         raise ValueError(
@@ -94,10 +74,7 @@ def _repair_bad_pixels(image: np.ndarray, bad_pixel_mask: np.ndarray) -> np.ndar
 def aperture_peaks(image: np.ndarray, positions: Sequence[Tuple[float, float]],
                    r_ap: float,
                    bad_pixel_mask: Optional[np.ndarray] = None) -> np.ndarray:
-    """Peak pixel value (ADU) inside each circular aperture (saturation check).
-
-    Masked pixels are ignored (a flagged hot pixel is a defect, not saturation).
-    """
+    """Peak pixel value [ADU] inside each circular aperture."""
     positions = list(positions)
     aper = CircularAperture(positions, r=r_ap)
     masks = aper.to_mask(method="center")
@@ -117,34 +94,19 @@ def aperture_peaks(image: np.ndarray, positions: Sequence[Tuple[float, float]],
         peaks.append(float(np.max(vals)) if vals.size else float("nan"))
     return np.asarray(peaks, dtype=float)
 
-# Opt into the non-deprecated detection column names (x_centroid/y_centroid);
-# photutils 3.0 deprecated the legacy xcentroid/ycentroid aliases (CLAUDE.md:
-# avoid deprecated APIs). pair_oe also falls back to the legacy names.
-try:
-    photutils.future_column_names = True
-except Exception:  # pragma: no cover - older photutils without the flag
-    pass
-
-from ._types import BeamFlux, BeamGeometry, PolConfig
-
 
 def estimate_background(image: np.ndarray, sigma: float = 3.0) -> Tuple[float, float]:
-    """Sigma-clipped ``(median, std)`` background of an image (ADU)."""
+    """Sigma-clipped ``(median, std)`` background [ADU]."""
     _, median, std = sigma_clipped_stats(image, sigma=sigma)
     return float(median), float(std)
 
 
 def detect_sources(image: np.ndarray, fwhm_px: float,
                    threshold_sigma: float = 5.0):
-    """Detect point sources with DAOStarFinder.
-
-    Returns the photutils detection table (with ``xcentroid``, ``ycentroid``)
-    or ``None`` if nothing is found.
-    """
+    """Detect point sources with DAOStarFinder; returns table or ``None``."""
     median, std = estimate_background(image)
     finder = DAOStarFinder(fwhm=fwhm_px, threshold=threshold_sigma * std)
-    tbl = finder(image - median)
-    return tbl
+    return finder(image - median)
 
 
 Region = Tuple[float, float, float, float]
@@ -152,14 +114,7 @@ Region = Tuple[float, float, float, float]
 
 def point_in_regions(x: float, y: float,
                      regions: Optional[Sequence[Region]]) -> bool:
-    """True if ``(x, y)`` lies inside any ``(x0, y0, x1, y1)`` rectangle.
-
-    Rectangles are inclusive and corner-order-independent (min/max normalized);
-    coordinates are detector ``(x, y)`` with origin upper-left. Used to drop
-    sources landing on a known bad FOV region — e.g. the α-BBO Savart's chipped
-    corner, once it is characterized from real flats (see
-    :func:`reduce_to_stokes`'s ``exclude_regions``). ``None`` → never excluded.
-    """
+    """True if ``(x, y)`` lies inside any ``(x0, y0, x1, y1)`` rectangle."""
     if not regions:
         return False
     for (x0, y0, x1, y1) in regions:
@@ -171,15 +126,11 @@ def point_in_regions(x: float, y: float,
 def pair_oe(detections, beam: BeamGeometry, tol_px: float = 2.0,
             exclude_regions: Optional[Sequence[Region]] = None
             ) -> List[Tuple[Tuple[float, float], Tuple[float, float]]]:
-    """Pair detections into (o, e) using the known beam offset vector.
+    """Pair detections into (ordinary, extraordinary) positions.
 
-    For each detection treated as an ordinary beam, look for a partner near
-    ``o + offset``. Returns a list of ``((x_o, y_o), (x_e, y_e))`` pairs.
-
-    ``exclude_regions`` (list of ``(x0,y0,x1,y1)`` rectangles) drops any pair
-    whose o- or e-centroid falls inside a bad FOV region (e.g. the Savart chipped
-    corner). ``offset_xy`` comes from ``beam``, which is the **active filter's**
-    geometry (the α-BBO split is dispersive — pass ``cfg.for_filter(name).beam``).
+    Uses the known Savart offset from ``beam``. ``exclude_regions`` drops pairs
+    whose ordinary or extraordinary centroid falls in a masked area of the
+    detector.
     """
     if detections is None or len(detections) == 0:
         return []
@@ -218,30 +169,10 @@ def measure_fluxes(image: np.ndarray, positions: Sequence[Tuple[float, float]],
                    ron_map: Optional[np.ndarray] = None,
                    bad_pixel_mask: Optional[np.ndarray] = None
                    ) -> Tuple[np.ndarray, np.ndarray]:
-    """Aperture photometry at given positions. Returns (flux_e, sigma_e).
+    """Aperture photometry at given positions. Returns ``(flux_e, sigma_e)``.
 
-    Net flux = aperture sum − (annulus-median sky) × aperture area, converted to
-    electrons. Uncertainty via the CCD equation
-    ``σ² = F_src + (n_ap·bg + Σ_ap RON²) + (n_ap²/n_sky)·(bg + ⟨RON²⟩)``
-    (electrons), divided by the effective number of combined frames.
-
-    Parameters
-    ----------
-    n_combined : int
-        How many equal-exposure frames were combined into ``image`` (per HWP
-        angle). The variance is suppressed by the effective N (finding C-3;
-        Stockmans et al. eq. 16, Source B). Default 1 → single-exposure σ.
-    combine : {"median", "mean"}
-        Combination used to build ``image`` — sets the effective-N penalty
-        (median: ``N/(π/2)``; mean: ``N``).
-    ron_map : ndarray, optional
-        Per-pixel read noise (**electrons**), same shape as ``image`` (finding
-        C-1). When given, ``Σ_ap RON_i²`` is summed over aperture pixels and
-        ``⟨RON²⟩`` averaged over the annulus, instead of the scalar
-        ``cfg.read_noise_e``.
-    bad_pixel_mask : ndarray of bool, optional
-        True where a pixel is bad/hot; repaired by local interpolation before
-        photometry (finding C-2).
+    Dark shot noise is not added separately: the annulus background already
+    includes dark accumulation.
     """
     positions = list(positions)
     gain = cfg.sensor.gain_e_per_adu
@@ -264,8 +195,6 @@ def measure_fluxes(image: np.ndarray, positions: Sequence[Tuple[float, float]],
     net_adu = ap_sum_adu - sky_med_adu * n_ap
     flux_e = net_adu * gain
 
-    # read-noise variance (electrons²): scalar core, or the per-pixel map summed
-    # over the aperture (Σ RON²) and averaged over the annulus (⟨RON²⟩).
     if ron_map is not None:
         ron2 = np.asarray(ron_map, dtype=float) ** 2
         if ron2.shape != np.asarray(image).shape:
@@ -294,7 +223,6 @@ def _aperture_saturated(image: np.ndarray,
                         cfg: PolConfig, r_ap: float, bias_adu: float,
                         bad_pixel_mask: Optional[np.ndarray] = None
                         ) -> np.ndarray:
-    """Boolean per-position flag: aperture peak ≥ saturation/linearity limit (C-6)."""
     peaks_adu = aperture_peaks(image, positions, r_ap, bad_pixel_mask=bad_pixel_mask)
     peaks_e = (peaks_adu - bias_adu) * cfg.sensor.gain_e_per_adu
     return np.asarray(peaks_e >= cfg.sat_limit_e(), dtype=bool)
@@ -307,7 +235,7 @@ def measure_pair(image: np.ndarray, o_xy: Tuple[float, float],
                  n_combined: int = 1, combine: str = "median",
                  ron_map: Optional[np.ndarray] = None,
                  bad_pixel_mask: Optional[np.ndarray] = None) -> BeamFlux:
-    """Aperture-photometer one o/e pair → :class:`BeamFlux` (electrons)."""
+    """Aperture-photometer one ordinary/extraordinary pair → :class:`BeamFlux`."""
     flux, sig = measure_fluxes(image, [o_xy, e_xy], cfg, r_ap=r_ap, r_in=r_in,
                                r_out=r_out, bias_adu=bias_adu,
                                n_combined=n_combined, combine=combine,
@@ -332,24 +260,9 @@ def photometer_sequence(
     ron_map: Optional[np.ndarray] = None,
     bad_pixel_mask: Optional[np.ndarray] = None,
 ) -> Dict[str, List[BeamFlux]]:
-    """Measure each source's o/e fluxes across all HWP angles.
+    """Measure each source's ordinary and extraordinary fluxes at every HWP angle.
 
-    Parameters
-    ----------
-    frames_by_angle : dict
-        ``{hwp_deg: image_array}`` (physical ADU).
-    o_positions : list of (x, y)
-        Ordinary-beam positions of each source (e found via the beam offset).
-    n_by_angle : dict, optional
-        ``{hwp_deg: n_frames_combined}`` for the per-angle σ suppression (finding
-        C-3). Missing/absent angles default to 1.
-    combine : {"median", "mean"}
-        Combination used per angle (sets the effective-N penalty).
-    ron_map, bad_pixel_mask : ndarray, optional
-        Per-pixel read-noise map (C-1) and bad-pixel mask (C-2), threaded to
-        :func:`measure_fluxes`.
-
-    Returns ``{source_name: [BeamFlux, ...]}`` ordered by HWP angle.
+    Returns ``{source_name: [BeamFlux, ...]}`` ordered by half-wave plate angle.
     """
     o_positions = list(o_positions)
     names = list(names) if names is not None else [f"src{i}" for i in range(len(o_positions))]
@@ -358,7 +271,6 @@ def photometer_sequence(
             f"names ({len(names)}) must match o_positions ({len(o_positions)})"
         )
     if len(set(names)) != len(names):
-        # duplicate names would collapse the per-source result dict below
         raise ValueError(f"source names must be unique; got {names}")
     dx, dy = cfg.beam.offset_xy()
     out: Dict[str, List[BeamFlux]] = {nm: [] for nm in names}

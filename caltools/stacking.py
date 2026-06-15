@@ -1,7 +1,7 @@
 """
-caltools.stacking — Master frame construction (bias, dark, flat).
+caltools.stacking — Master bias, dark, and flat construction.
 
-Uses chunked row-wise processing to keep memory bounded.
+Row-chunked processing keeps memory bounded on full-frame stacks.
 """
 
 from __future__ import annotations
@@ -22,9 +22,8 @@ def master_bias(
 ) -> Frame:
     """Construct a master bias from a stack of bias frames.
 
-    Uses chunked row-wise processing: at ``chunk_rows=50`` with 100 frames,
-    each chunk is ~126 MB. The median is well suited for rejecting
-    intermittent outliers when enough frames are available.
+    Uses chunked row-wise median/mean combination. Median stacking rejects
+    intermittent outliers (cosmic rays, RTN glitches) when enough frames exist.
 
     Parameters
     ----------
@@ -39,7 +38,6 @@ def master_bias(
     """
     reduce_fn = np.median if method == "median" else np.mean
 
-    # Determine output shape from first frame
     first = load_frame(paths[0], roi=roi)
     ny, nx = first.shape
     master = np.empty((ny, nx), dtype=np.float32)
@@ -77,7 +75,6 @@ def master_dark(
     first = load_frame(paths[0], roi=roi)
     ny, nx = first.shape
 
-    # Adjust bias for ROI if needed
     bias_use = bias
     if bias.shape != (ny, nx):
         if roi is not None:
@@ -90,7 +87,6 @@ def master_dark(
     master = np.empty((ny, nx), dtype=np.float32)
 
     for row_sl, chunk in load_cube_chunked(paths, chunk_rows=chunk_rows, roi=roi):
-        # Bias-subtract each frame in the chunk
         bias_strip = bias_use[row_sl, :].astype(np.float32)
         chunk_sub = chunk - bias_strip[np.newaxis, :, :]
         master[row_sl, :] = reduce_fn(chunk_sub, axis=0).astype(np.float32)

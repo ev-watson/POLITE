@@ -1,8 +1,8 @@
 """
-caltools.prnu — Photo-Response Non-Uniformity from flat-field stacks.
+caltools.prnu — Pixel-to-pixel sensitivity variation from flat fields.
 
-PRNU is the pixel-to-pixel sensitivity variation, measured as the
-standard deviation of the normalized master flat.
+Photo-response non-uniformity (PRNU) is the scatter of sensitivity across
+pixels, measured as the standard deviation of a median-normalized master flat.
 """
 
 from __future__ import annotations
@@ -46,7 +46,6 @@ def prnu_map(
     """
     mf = master_flat(flat_paths, bias, dark=dark, normalize=True, roi=roi)
 
-    # PRNU: deviation from unity in the normalized flat
     prnu = mf - 1.0
     prnu_std = float(np.std(prnu))
     prnu_percent = prnu_std * 100.0

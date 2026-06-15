@@ -1,22 +1,14 @@
 """
-poltools.errors — Publication-grade polarization error metrics & debiasing.
+poltools.errors — Polarization uncertainties and debiasing estimators.
 
-All estimators are sourced from peer-reviewed / user-provided literature
-(CLAUDE.md Sources A/B); each function cites its specific source:
+Functions used when assembling :class:`~poltools._types.StokesResult`:
 
-* Residual σ_P from the modulation fit — Magalhães, Benedetti & Roland (1984) /
-  SOLVEPOL (Ramírez et al. 2017, Source B).
-* Polarization-angle error: high-SNR ``28.65·σ_P/P`` (Serkowski; SOLVEPOL,
-  Source B) and the low-SNR distribution of Naghizadeh-Khouei & Clarke
-  (1993, A&A 274, 968, Source B).
-* Polarization bias / debiasing: the Modified Asymptotic (MAS) estimator —
-  Plaszczynski et al. (2014, MNRAS 439, 4048, Source B) eq. 20; restated in
-  Montier et al. (2015 II, Source B) eq. 19. Classical comparators: Wardle &
-  Kronberg (1974) and the naive estimator. (The MAS polarization-fraction
-  variance, Montier II eq. 20, is the cov-free special case of the general q–u
-  propagation in :func:`poltools.stokes.sigma_p_from_qu`, which is used instead.)
-
-No analysis method outside Sources A/B is introduced.
+* **Residual polarization uncertainty** — from the modulation fit
+  (Magalhães et al. 1984; Ramírez et al. 2017, SOLVEPOL).
+* **Modified Asymptotic debiasing** — corrects low signal-to-noise bias in the
+  polarization fraction (Plaszczynski et al. 2014).
+* **Position-angle uncertainty** — Gaussian formula at high signal-to-noise;
+  full interval from Naghizadeh-Khouei & Clarke (1993) at low signal-to-noise.
 """
 
 from __future__ import annotations
@@ -24,29 +16,20 @@ from __future__ import annotations
 from typing import Optional
 
 import numpy as np
-from scipy import integrate, optimize
+from scipy import integrate
 from scipy.special import erfcx
 
-# 0.5 rad expressed in degrees: σ_θ[deg] = (1/2)(σ_P/P)·(180/π) = 28.6479·σ_P/P
-_RAD_HALF_DEG = 0.5 * np.rad2deg(1.0)  # = 28.6478897565...
+_RAD_HALF_DEG = 0.5 * np.rad2deg(1.0)
 
 
-# --------------------------------------------------------------------------- #
-# Residual-based polarization uncertainty (LSQ modulation)
-# --------------------------------------------------------------------------- #
 def residual_sigma_p(z: np.ndarray, q: float, u: float, n: int) -> float:
-    """SOLVEPOL/Magalhães (1984) residual polarization error.
+    """Residual polarization uncertainty from the modulation fit (SOLVEPOL).
 
-    For the canonical equally-spaced (22.5°) HWP set the modulation design is
-    orthogonal with ``Σcos²4ψ = Σsin²4ψ = N/2``, and the residual-based σ on the
-    fractional Stokes is
+    For equally spaced half-wave plate angles,
 
-        ``σ_P = sqrt( ( (2/N)·Σ z_i² − q² − u² ) / (N − 2) )``.
+    ``σ_P = sqrt( ((2/N) Σ z_i² − q² − u²) / (N − 2) )``,
 
-    This is the form consistent with the LSQ parameter covariance
-    (``σ_q = σ_u = sqrt(2/N)·σ_z``, ``σ_z² = Σresid²/(N−2)``): it vanishes for a
-    noiseless perfect fit and equals the propagated σ_q. (Validated against
-    Monte-Carlo in the test suite; matches SOLVEPOL, Source B.)
+    where ``z_i`` are the measured beam ratios at each angle.
     """
     z = np.asarray(z, dtype=float)
     if n <= 2:
@@ -55,33 +38,20 @@ def residual_sigma_p(z: np.ndarray, q: float, u: float, n: int) -> float:
     return float(np.sqrt(max(val, 0.0)))
 
 
-# --------------------------------------------------------------------------- #
-# Debiasing estimators for P = sqrt(q² + u²)  (Rice bias at low SNR)
-# --------------------------------------------------------------------------- #
 def debias_naive(p: float) -> float:
-    """Naive (biased) estimator — returned unchanged, for comparison tables."""
+    """Return the measured polarization fraction unchanged (biased at low SNR)."""
     return float(p)
 
 
 def debias_wardle_kronberg(p: float, sigma_p: float) -> float:
-    """Wardle & Kronberg (1974): ``p_db = sqrt(max(p² − σ², 0))``."""
+    """Wardle & Kronberg (1974) debiasing: ``sqrt(max(p² − σ², 0))``."""
     return float(np.sqrt(max(p ** 2 - sigma_p ** 2, 0.0)))
 
 
 def debias_mas(p: float, sigma_p: float, b2: Optional[float] = None) -> float:
-    """Modified Asymptotic estimator (Plaszczynski 2014 eq. 20).
+    """Modified Asymptotic estimator (Plaszczynski et al. 2014, eq. 20).
 
-    ``p_MAS = p − b²·(1 − e^{−p²/b²}) / (2p)``.
-
-    Parameters
-    ----------
-    p : float
-        Measured polarization fraction.
-    sigma_p : float
-        Polarization uncertainty.
-    b2 : float, optional
-        Noise-bias parameter b². Defaults to the canonical equal-variance value
-        ``b² = σ_p²`` (Montier II eq. 15 canonical case).
+    ``p_MAS = p − b²(1 − e^{−p²/b²}) / (2p)`` with ``b² = σ_p²`` by default.
     """
     if b2 is None:
         b2 = sigma_p ** 2
@@ -90,50 +60,40 @@ def debias_mas(p: float, sigma_p: float, b2: Optional[float] = None) -> float:
     return float(p - b2 * (1.0 - np.exp(-(p ** 2) / b2)) / (2.0 * p))
 
 
-# --------------------------------------------------------------------------- #
-# Polarization-angle uncertainty
-# --------------------------------------------------------------------------- #
 def sigma_theta_highsnr(p: float, sigma_p: float) -> float:
-    """High-SNR position-angle error in degrees: ``28.65·σ_P/P``."""
+    """Position-angle uncertainty [degrees] at high polarization signal-to-noise.
+
+    Uses the Serkowski relation: ``28.65° × σ_P / P``.
+    """
     if p <= 0:
         return float("nan")
     return float(_RAD_HALF_DEG * sigma_p / p)
 
 
 def _nkc_pdf_unnorm(dtheta_rad: np.ndarray, snr: float) -> np.ndarray:
-    """Unnormalized Naghizadeh-Khouei & Clarke (1993) PA-offset PDF.
-
-    ``G(η) ∝ 1/√π + η₀·erfcx(−η₀)`` with ``η₀ = (P₀/σ/√2)·cos(2·dθ)``.
-    Uses ``erfcx`` (scaled complementary error function) for numerical stability
-    at all SNR (avoids the e^{η₀²} overflow in the textbook form).
-    """
+    """Naghizadeh-Khouei & Clarke (1993) position-angle offset PDF (unnormalized)."""
     eta0 = (snr / np.sqrt(2.0)) * np.cos(2.0 * dtheta_rad)
     inv_sqrt_pi = 1.0 / np.sqrt(np.pi)
     return inv_sqrt_pi + eta0 * erfcx(-eta0)
 
 
 def sigma_theta_nkc(snr: float, conf: float = 0.6827) -> float:
-    """Naghizadeh-Khouei & Clarke (1993) PA confidence half-width (deg).
+    """Position-angle confidence half-width [degrees] at low or moderate SNR.
 
-    Returns the symmetric half-width ``Δθ`` of the central ``conf`` credible
-    interval of the position-angle offset, valid at low/moderate SNR where the
-    Gaussian ``28.65/SNR`` approximation fails. Converges to the high-SNR value
-    as SNR grows.
+    Integrates the Naghizadeh-Khouei & Clarke (1993) distribution for the
+    polarization angle rather than assuming a Gaussian.
 
     Parameters
     ----------
     snr : float
-        Polarization signal-to-noise ``P₀/σ_P``.
+        Polarization signal-to-noise, ``P / σ_P``.
     conf : float
-        Central probability content (default 1σ-equivalent, 0.6827).
+        Central probability contained in the interval (default 68.27%, one sigma).
     """
     if snr <= 0:
-        return 45.0  # fully indeterminate over (−90, 90] half-range
+        return 45.0
     if snr > 25.0:
-        # erfcx overflows for η₀² > ~709; at this SNR the NK&C interval is
-        # indistinguishable from the Gaussian asymptotic 28.65/SNR.
         return float(_RAD_HALF_DEG / snr)
-    # PA offset lives in (−π/2, π/2]; PDF is symmetric about 0.
     grid = np.linspace(-np.pi / 2, np.pi / 2, 4001)
     pdf = _nkc_pdf_unnorm(grid, snr)
     norm = integrate.trapezoid(pdf, grid)
@@ -144,7 +104,6 @@ def sigma_theta_nkc(snr: float, conf: float = 0.6827) -> float:
         return integrate.trapezoid(pdf[mask], grid[mask])
 
     target = conf
-    # bisection for half-width h in (0, π/2]
     lo, hi = 0.0, np.pi / 2
     for _ in range(80):
         mid = 0.5 * (lo + hi)
@@ -155,15 +114,8 @@ def sigma_theta_nkc(snr: float, conf: float = 0.6827) -> float:
     return float(np.rad2deg(0.5 * (lo + hi)))
 
 
-# --------------------------------------------------------------------------- #
-# Analytic propagation through the normalized ratio R
-# (used by double_difference and lsq_modulation)
-# --------------------------------------------------------------------------- #
 def sigma_r(f_o: float, f_e: float, sig_o: float, sig_e: float) -> float:
-    """Uncertainty on ``R = (f_e − f_o)/(f_e + f_o)`` by error propagation.
-
-    ``σ_R² = 4/S⁴ · (f_o² σ_e² + f_e² σ_o²)`` with ``S = f_e + f_o``.
-    """
+    """Uncertainty on the beam ratio ``R = (f_e − f_o)/(f_e + f_o)``."""
     s = f_e + f_o
     if s == 0:
         return float("nan")

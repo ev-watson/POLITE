@@ -1,20 +1,23 @@
 # POLITE
 
-Observatory automation and detector characterization for a PlaneWave CDK20 + QHY268M (IMX571) imaging system, controlled via ASCOM Alpaca.
+Observatory automation and detector characterization for a PlaneWave CDK20 + QHY268M (IMX571) system, controlled via ASCOM Alpaca and PlaneWave PWI4.
 
 ## Overview
 
-POLITE provides end-to-end observatory control — from mount startup and slewing through automated imaging sequences and calibration frame acquisition — alongside `caltools`, a detector characterization library for bias, dark, flat, noise, gain, linearity, and PRNU analysis, and `poltools`, a dual-beam imaging-polarimetry simulator + Stokes-extraction pipeline.
+POLITE provides end-to-end observatory control — mount startup, slewing, automated imaging, and calibration acquisition — alongside two analysis libraries:
 
-The instrument is a dual-beam (HWP + α-BBO Savart) imaging polarimeter. Its optical chain is:
+- **`caltools`** — bias/dark/flat stacking, read noise, gain (PTC), linearity, PRNU, dark current
+- **`poltools`** — dual-beam imaging-polarimetry simulator and Stokes-extraction pipeline
+
+The instrument is a dual-beam imaging polarimeter (rotating HWP + α-BBO Savart analyzer):
 
 ```
-Sky → PlaneWave CDK20 → PWI4 Focuser/Rotator → Astronomik L3 UV/IR-cut filter
+Sky → PlaneWave CDK20 → PWI4 Focuser/Rotator → Astronomik L3 UV/IR-cut
     → rotating Half-Wave Plate → ZWO 5-slot EFW (Photometric B, V, R, Clear, Dark)
-    → α-BBO Savart plate (18 mm) → QHY268M (IMX571) detector
+    → α-BBO Savart plate (18 mm) → QHY268M (IMX571)
 ```
 
-The system interfaces with PlaneWave's PWI4 HTTP API for mount/rotator control and the ASCOM Alpaca REST protocol for camera and filter wheel operations. Night sessions are defined declaratively as target/frame plans and executed autonomously with logging, autoguiding, and dithering support.
+Mount and rotator control use the PWI4 HTTP API; camera and filter wheel use ASCOM Alpaca. Night sessions are declarative Python scripts executed with logging, autoguiding, and dithering.
 
 ## Project Structure
 
@@ -41,7 +44,8 @@ alpyca_tools/            ASCOM Alpaca camera interface layer
   telemetry.py           Telemetry collection
   scripts/               Diagnostic and snapshot scripts
 
-caltools/                Detector characterization library (v0.1.0)
+caltools/                Detector characterization (v0.1.0)
+  README.md              Package overview and quick start
   io.py                  FITS I/O, cube loading, header parsing
   stacking.py            Master bias, dark, flat generation
   stats.py               Welford accumulator, MAD sigma, outlier masking
@@ -52,7 +56,8 @@ caltools/                Detector characterization library (v0.1.0)
   prnu.py                Photo-response non-uniformity mapping
   plotting.py            Diagnostic plots
 
-poltools/                Imaging-polarimetry simulator + Stokes pipeline (v0.1.0)
+poltools/                Imaging polarimetry simulator + Stokes pipeline (v0.1.0)
+  README.md              Package overview and quick start
   mueller.py             Mueller forward model (HWP, PWI4 rotator, analyzer)
   simulate.py            2-D FITS forward model of the telescope chain
   _types.py              PolConfig, BeamGeometry, FilterConfig (per-band α-BBO)
@@ -93,14 +98,23 @@ config = NightSessionConfig(
 run_night_session(config)
 ```
 
-Detector characterization uses `caltools`:
+Detector characterization:
 
 ```python
 import caltools as ct
+
 config = ct.sensor_config_from_header("frame.fit", gain=0.5)
 bias = ct.master_bias(bias_paths)
 rn_map, ts_map = ct.read_noise_map(bias_cube)
-ptc = ct.photon_transfer_curve(flat_pairs, bias)
+ptc = ct.photon_transfer_curve(flat_groups, bias, config)
+```
+
+Polarimetry reduction:
+
+```python
+import poltools as pt
+
+results = pt.reduce_to_stokes(frame_paths, cfg, o_positions=positions, method="lsq")
 ```
 
 ## Requirements

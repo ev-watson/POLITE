@@ -1,25 +1,21 @@
 """
-poltools._types — Core data structures for the POLITE polarimetry pipeline.
+poltools._types — Core data structures for the polarimetry pipeline.
 
-Mirrors the caltools data-model style (frozen config dataclasses + a uniform
-result container compatible with ``caltools.AnalysisResult``).
+Frozen configuration dataclasses and a uniform result container
+(:class:`StokesResult`, compatible with :class:`caltools.AnalysisResult`).
 
-Conventions (fixed once, used everywhere)
------------------------------------------
-* Detector arrays are indexed ``[row, col] == [y, x]`` with the **origin in the
-  upper-left** (CLAUDE.md): row 0 is the top, col 0 is the left. A source at
-  detector coordinate ``(x, y)`` lives at ``array[y, x]``.
-* Stokes vectors are full 4-vectors ``(I, Q, U, V)`` everywhere so a future
-  quarter-wave-plate / Stokes-V mode drops in without rework. The *linear*
-  pipeline (single HWP) never solves for V — a returned V of 0 is **not** a
-  measurement (a single HWP cannot constrain V).
-* The two analyzed beams of the Savart plate are labelled ``o`` (ordinary) and
-  ``e`` (extraordinary). By convention here the **e-beam carries the analyzer
-  +Q' axis** so that the double-difference ratio
-  ``R = (F_e - F_o)/(F_e + F_o) = q cos4θ + u sin4θ`` reproduces the ideal-HWP
-  modulation formula literally. The absolute sign/zero-point of the position
-  angle is fixed
-  by standard-star calibration, so this label choice is immaterial to science.
+Conventions
+-----------
+* Detector arrays use ``[row, col] == [y, x]`` with origin upper-left.
+  A source at ``(x, y)`` is stored at ``array[y, x]``.
+* Stokes vectors are 4-vectors ``(I, Q, U, V)`` throughout. This pipeline
+  measures linear polarization only; a returned *V* of 0 is not a measurement.
+* The Savart plate splits each source into an **ordinary** and **extraordinary**
+  beam on the detector. The extraordinary beam is defined to carry the analyzer
+  +Q′ axis so that the intensity ratio
+  ``R = (F_extraordinary − F_ordinary)/(F_extraordinary + F_ordinary)``
+  modulates as ``q cos4θ + u sin4θ`` when the half-wave plate (HWP) is ideal.
+  The absolute position-angle zero-point is set by standard-star calibration.
 """
 
 from __future__ import annotations
@@ -31,67 +27,60 @@ import numpy as np
 
 from caltools import SensorConfig
 
-# Beam offset convention: e_position = o_position + separation_px * (sin PA, cos PA)
-# in (x, y) detector coordinates (origin upper-left). PA=0 places e directly
-# "below" o (larger row index). Used identically by simulate and photometry.
+# Extraordinary-beam position = ordinary-beam position + separation along the
+# split direction (position angle), in detector (x, y) pixels.
 
 
 @dataclass(frozen=True)
 class BeamGeometry:
-    """α-BBO Savart-plate dual-beam split geometry on the detector.
+    """Dual-beam geometry produced by the α-BBO Savart plate on the detector.
 
-    The split is **dispersive** (α-BBO birefringence), so a separate
-    :class:`BeamGeometry` belongs to each EFW band — see :class:`FilterConfig`
-    and :meth:`PolConfig.for_filter`.
+    The plate is dispersive: beam separation depends on filter bandpass, so
+    each filter needs its own :class:`BeamGeometry` (see :class:`FilterConfig`
+    and :meth:`PolConfig.for_filter`).
 
     Parameters
     ----------
     separation_px : float
-        Centre-to-centre o<->e beam separation in pixels.
+        Centre-to-centre distance between ordinary and extraordinary beams [px].
     position_angle_deg : float
-        Direction of the o->e split vector in the detector frame (deg).
+        Direction from the ordinary to the extraordinary beam in the detector
+        frame [degrees].
     """
 
     separation_px: float
     position_angle_deg: float = 0.0
 
     def offset_xy(self) -> Tuple[float, float]:
-        """Return the (dx, dy) o->e offset in detector (x, y) pixels."""
+        """Return the (dx, dy) pixel offset from ordinary to extraordinary beam."""
         pa = np.deg2rad(self.position_angle_deg)
         return (self.separation_px * np.sin(pa), self.separation_px * np.cos(pa))
 
 
 @dataclass(frozen=True)
 class FilterConfig:
-    """Per-filter optical calibration for one ZWO EFW slot.
+    """Per-filter calibration for one electronic filter wheel slot.
 
-    The α-BBO Savart plate is birefringent and **dispersive**, so the ordinary/
-    extraordinary beam separation (and, at second order, its position angle)
-    differs from band to band. The split geometry is therefore stored **per
-    filter** and is **measured from flats / standard-star o<->e pairs (Source
-    A)** — it is **not** computed from a dispersion model here (a single fixed
-    separation across all bands would mis-pair o/e in :func:`pair_oe`, since a
-    few-percent dispersion of a ~60-px split exceeds the pairing tolerance).
-    Until a slot is characterized it carries a placeholder ``beam`` and
-    ``characterized=False``.
+    Because the Savart split shifts with wavelength, beam separation must be
+    measured separately in each band (from flat fields or standard-star beam
+    pairs). Using one separation for all filters will mis-pair ordinary and
+    extraordinary images when dispersion moves the split by more than a few
+    pixels.
 
     Parameters
     ----------
     name : str
-        EFW slot label, matching the FITS ``FILTER`` card (e.g. "Photometric V").
+        Filter-wheel slot label (matches the FITS ``FILTER`` keyword).
     beam : BeamGeometry
-        Savart o<->e split geometry **in this band**.
+        Ordinary/extraordinary geometry in this band.
     eff_wavelength_nm : float, optional
-        Effective wavelength of the band (label / provenance only; not used to
-        compute any optical quantity).
+        Nominal effective wavelength [nm]; metadata only.
     efficiency : float
-        Polarization (modulation) efficiency in this band, calibrated from a
-        polarized standard. Default 1.0.
+        Modulation efficiency in this band (from polarized standard stars).
     is_dark : bool
-        True for the blocking / "Dark" slot (no light reaches the detector).
+        True for the blocking (dark) slot.
     characterized : bool
-        True once ``beam`` / ``efficiency`` come from real calibration data;
-        ``False`` marks them as placeholders.
+        True once ``beam`` and ``efficiency`` come from calibration data.
     """
 
     name: str
@@ -104,12 +93,11 @@ class FilterConfig:
 
 def default_efw_filters(separation_px: float = 60.0,
                         position_angle_deg: float = 0.0) -> Tuple[FilterConfig, ...]:
-    """The POLITE ZWO 5-slot EFW as placeholder (un-characterized) slots.
+    """Default POLITE ZWO 5-slot filter wheel with placeholder geometry.
 
-    Every slot shares the same placeholder :class:`BeamGeometry` until the
-    per-band α-BBO beam separation is measured from flats / standards (Source A);
-    each is flagged ``characterized=False``. Effective wavelengths are nominal
-    Johnson–Cousins band centres (label / provenance only).
+    ``beam`` is identical in every slot until measured per band from flat
+    fields or standard stars. Nominal Johnson–Cousins wavelengths are labels
+    only.
     """
     bg = BeamGeometry(separation_px=separation_px,
                       position_angle_deg=position_angle_deg)
@@ -124,60 +112,39 @@ def default_efw_filters(separation_px: float = 60.0,
 
 @dataclass(frozen=True)
 class PolConfig:
-    """Instrument configuration for the POLITE polarimeter (sim + reduction).
-
-    Single source of truth shared by the forward model and the reducer.
+    """Instrument configuration shared by the simulator and reducer.
 
     Parameters
     ----------
-    sensor : caltools.SensorConfig
-        Detector parameters (gain, size, pixel pitch, ...).
+    sensor : SensorConfig
+        Detector parameters (gain, size, pixel pitch).
     beam : BeamGeometry
-        Dual-beam split geometry.
+        Active dual-beam split geometry.
     plate_scale_arcsec : float
-        Arcsec per pixel (QHY268M on CDK20 ~ 0.224).
+        Arcsec per pixel.
     hwp_angles_deg : tuple of float
-        HWP positions in the modulation sequence (deg). Default is the minimal
-        4-angle set spanning q and u (double_ratio / double_difference); N>=4
-        supported (lsq_modulation).
+        Half-wave plate angles in the modulation sequence [degrees].
     retardance_deg : float
-        Retarder retardance delta (HWP = 180; 90 reserved for a future QWP).
+        Retarder retardance δ [degrees]; 180° for a half-wave plate.
     instrument_rotator_deg : float
-        **PWI4 Focuser/Rotator** field angle alpha (deg). The PWI4 rotator sits
-        in the chain *after* the CDK20 and *upstream* of the L3 cut filter and
-        the HWP, so it rotates the whole instrument (HWP/EFW/Savart) relative to
-        the sky+telescope frame. Modelled as a frame rotation applied to the
-        incident Stokes vector (see :func:`poltools.mueller.oe_intensities`).
+        Field-rotator angle α [degrees], upstream of the half-wave plate.
     filter_name : str
-        Active EFW slot identifier; matches a ``name`` in ``filters`` and the
-        FITS ``FILTER`` card.
+        Active filter-wheel slot (matches FITS ``FILTER``).
     filters : tuple of FilterConfig
-        Registry of the ZWO EFW slots with their **per-band** Savart geometry
-        (the α-BBO split is dispersive). Empty by default (single-filter use via
-        ``beam``); populate with :func:`default_efw_filters` and select a band
-        with :meth:`for_filter`.
+        Registry of per-filter Savart beam geometry.
     read_noise_e : float
-        Detector read noise (e-). For the QHY268M this is **gain-mode-specific**
-        (HCG/LCG and the gain setting change it strongly); it must match
-        ``readout_mode``/``gain_setting`` below. The default 3.5 e- is the
-        characterized Mode 0 / Gain 0 value (project A/B; ``reduction.md``). The
-        scalar describes the Gaussian read-noise *core*; a per-pixel read-noise
-        map (RTN/hot-pixel tail) can be supplied directly to ``measure_fluxes``.
+        Gaussian read-noise core [e⁻]. Must match ``readout_mode`` and
+        ``gain_setting``. A per-pixel map may be passed to photometry instead.
     dark_rate_e_per_s : float
-        Dark current (e-/pixel/s).
+        Dark current [e⁻ pixel⁻¹ s⁻¹].
     full_well_e : float
-        Full-well capacity (e-) used for saturation clipping.
+        Full-well capacity [e⁻].
     linearity_limit_e : float, optional
-        Onset of the non-linearity rolloff (e-). If set, photometry flags any
-        aperture whose peak exceeds it. Defaults to ``full_well_e`` when unset.
+        Non-linearity onset [e⁻]; defaults to ``full_well_e``.
     readout_mode : str
-        QHY268M readout mode the noise/gain values correspond to (e.g.
-        "Mode0"). TheSkyX writes no GAIN keyword, so the acquisition mode is
-        tracked here as provenance — ``read_noise_e`` and ``sensor.gain_e_per_adu``
-        must be sourced from the PTC characterization at *this* mode
-        (``reduction.md`` §3.1).
+        Detector readout mode for noise/gain provenance.
     gain_setting : int
-        QHY268M gain slider value the noise/gain values correspond to.
+        Gain slider value for noise/gain provenance.
     """
 
     sensor: SensorConfig
@@ -196,34 +163,20 @@ class PolConfig:
     gain_setting: int = 0
 
     def with_hwp_angles(self, angles) -> "PolConfig":
-        """Return a copy with a new HWP-angle sequence (frozen — no mutation).
-
-        Uses ``dataclasses.replace`` so every other field (including the
-        gain-mode provenance) is carried over verbatim.
-        """
+        """Return a copy with a new half-wave plate angle sequence."""
         return replace(self, hwp_angles_deg=tuple(float(a) for a in angles))
 
     def active_filter(self) -> Optional[FilterConfig]:
-        """Return the registered :class:`FilterConfig` matching ``filter_name``.
-
-        ``None`` when the filter is not in the ``filters`` registry (single-
-        filter configs that only use ``beam`` directly).
-        """
+        """Registered :class:`FilterConfig` for ``filter_name``, or ``None``."""
         for f in self.filters:
             if f.name == self.filter_name:
                 return f
         return None
 
     def for_filter(self, name: str) -> "PolConfig":
-        """Return a copy configured for EFW slot ``name``.
+        """Return a copy configured for filter-wheel slot ``name``.
 
-        Applies that band's **per-filter** Savart geometry (``beam``) and sets
-        ``filter_name`` via :func:`dataclasses.replace` (frozen — no mutation),
-        mirroring :meth:`with_hwp_angles`. Every other field (gain-mode
-        provenance, the full ``filters`` registry, ...) carries over verbatim, so
-        the returned config drives ``simulate``/``photometry``/``pipeline`` in
-        that band with no further changes. Raises ``KeyError`` if ``name`` is not
-        registered.
+        Raises ``KeyError`` if ``name`` is not in ``filters``.
         """
         for f in self.filters:
             if f.name == name:
@@ -234,30 +187,29 @@ class PolConfig:
         )
 
     def fwhm_px(self, seeing_arcsec: float) -> float:
-        """Convert a seeing FWHM in arcsec to pixels via the plate scale."""
+        """Convert seeing FWHM [arcsec] to pixels."""
         return seeing_arcsec / self.plate_scale_arcsec
 
     def sat_limit_e(self) -> float:
-        """Saturation/linearity limit (e-): ``linearity_limit_e`` or full well."""
+        """Saturation/linearity limit [e⁻]."""
         return (self.linearity_limit_e if self.linearity_limit_e is not None
                 else self.full_well_e)
 
 
 @dataclass(frozen=True)
 class PointSource:
-    """A point source with an astrophysical Stokes state.
+    """Point source with astrophysical Stokes state.
 
     Parameters
     ----------
     x, y : float
-        Ordinary-beam detector position (px), origin upper-left.
+        Ordinary-beam position [pixels], origin upper-left.
     flux_e : float
-        Total source intensity flux I in electrons over the exposure
-        (summed over both o and e beams; the beams partition this flux).
+        Total intensity *I* [e⁻] over the exposure (partitioned between beams).
     stokes : tuple
-        Normalized Stokes ``(1, q, u, v)`` with q,u,v in [-1, 1].
+        Normalized Stokes ``(1, q, u, v)``.
     name : str
-        Optional label.
+        Source label.
     """
 
     x: float
@@ -285,14 +237,11 @@ class PointSource:
 
 @dataclass
 class BeamFlux:
-    """Measured o/e fluxes for one source at one HWP angle.
+    """Ordinary and extraordinary aperture fluxes at one half-wave plate angle.
 
-    Fluxes and uncertainties are in **electrons** (a consistent linear unit;
-    the double-difference ratio is unit-independent).
-
-    ``saturated`` flags that the o- or e-aperture peak reached the detector
-    saturation/linearity limit at this angle, so the beam ratio (hence q,u) may
-    be biased — surfaced by the pipeline rather than silently reduced.
+    Fluxes are in electrons. ``saturated`` is True when an aperture peak reached
+    the detector saturation or linearity limit; the beam ratio may then be
+    biased.
     """
 
     hwp_deg: float
@@ -305,19 +254,19 @@ class BeamFlux:
 
 @dataclass
 class StokesResult:
-    """Uniform polarimetry result (compatible with caltools.AnalysisResult).
+    """Polarimetry result (compatible with :class:`caltools.AnalysisResult`).
 
     Parameters
     ----------
     name : str
-        Source / analysis label.
+        Source label.
     scalar_summary : dict
-        Key scalars: ``I, q, u, p, p_mas, theta_deg, sigma_p, sigma_theta_deg,
-        snr, chi2`` ...
+        Key scalars: intensity, normalized Stokes ``q, u``, polarization
+        fraction ``p``, debiased ``p_mas``, position angle, uncertainties, …
     maps : dict
-        Optional 2-D products (e.g. vector overlays).
+        Optional 2-D products.
     metadata : dict
-        Method, n_angles, estimator, and Source A/B provenance.
+        Reduction method, filter, angle count, estimator choice.
     """
 
     name: str

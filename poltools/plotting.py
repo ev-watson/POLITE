@@ -1,10 +1,9 @@
 """
-poltools.plotting — Publication figures for polarimetry results.
+poltools.plotting — Diagnostic figures for polarimetry results.
 
-Modulation curves, the q–u plane with error ellipses, recovered-vs-injected
-diagnostics, the MC pull histogram, and polarization-vector overlays. Images use
-``origin='upper'`` (CLAUDE.md). All functions accept an optional ``ax`` and
-return the Axes for composition.
+Modulation curves, q–u plane with error ellipses, recovery diagnostics,
+pull histograms, and polarization-vector overlays. Images use
+``origin='upper'``.
 """
 
 from __future__ import annotations
@@ -14,7 +13,7 @@ from typing import List, Optional, Sequence
 import numpy as np
 
 import matplotlib
-matplotlib.use("Agg")  # headless / scriptable
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
 
@@ -24,7 +23,7 @@ from .modulation import ratio_r
 
 def plot_modulation_curve(beam_fluxes: List[BeamFlux], q: float, u: float,
                           ax=None, title: str = "HWP modulation"):
-    """Plot R(θ) data points and the fitted ``q cos4θ + u sin4θ`` model."""
+    """Plot R(θ) data and the fitted ``q cos4θ + u sin4θ`` model."""
     if ax is None:
         _, ax = plt.subplots(figsize=(5, 3.2))
     ang = np.array([b.hwp_deg for b in beam_fluxes])
@@ -48,11 +47,7 @@ def plot_modulation_curve(beam_fluxes: List[BeamFlux], q: float, u: float,
 
 def plot_qu_plane(results, ax=None, title: str = "q–u plane",
                   injected=None):
-    """Scatter calibrated (q, u) with 1σ error ellipses.
-
-    ``results`` is a sequence of StokesResult; ``injected`` optional list of
-    (q_true, u_true) to overplot as crosses.
-    """
+    """Scatter (q, u) with 1σ error ellipses; optional injected truth crosses."""
     if ax is None:
         _, ax = plt.subplots(figsize=(4.6, 4.4))
     for r in results:
@@ -77,7 +72,7 @@ def plot_qu_plane(results, ax=None, title: str = "q–u plane",
 
 def plot_recovered_vs_injected(injected_p, recovered_p, sigma_p=None, ax=None,
                                title: str = "Recovered vs injected p"):
-    """Recovered p (with error bars) against injected p, with the 1:1 line."""
+    """Recovered vs injected polarization fraction with 1:1 reference."""
     if ax is None:
         _, ax = plt.subplots(figsize=(4.6, 4.4))
     injected_p = np.asarray(injected_p, dtype=float)
@@ -95,7 +90,7 @@ def plot_recovered_vs_injected(injected_p, recovered_p, sigma_p=None, ax=None,
 
 
 def plot_pull_histogram(pulls, ax=None, title: str = "Pull distribution"):
-    """Histogram of pulls (x̂−x_true)/σ with a unit Gaussian overlay."""
+    """Histogram of pulls with a unit Gaussian overlay."""
     if ax is None:
         _, ax = plt.subplots(figsize=(5, 3.4))
     pulls = np.asarray(pulls, dtype=float)

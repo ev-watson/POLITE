@@ -1,8 +1,8 @@
 """
-caltools.io — FITS loading, file grouping, and header parsing.
+caltools.io — FITS loading, grouping, and header parsing.
 
-Includes safeguards for scaled integer FITS data, optional gain keywords,
-and astropy's in-memory scaling path.
+Uses ``memmap=False`` so astropy applies BZERO/BSCALE scaling in memory
+(required for QHY uint16 frames with BZERO=32768).
 """
 
 from __future__ import annotations
@@ -156,13 +156,11 @@ def group_by_type_and_exposure(
             itype = m.group(2)
             exp = float(m.group(3))
         else:
-            # Fallback to FITS header
             hdr = fits.getheader(p)
             itype = str(hdr.get("IMAGETYP", "Unknown"))
             exp = float(hdr.get("EXPTIME", 0.0))
         groups[(itype, exp)].append(p)
 
-    # Sort file lists within each group
     return {k: sorted(v) for k, v in groups.items()}
 
 

@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "caltools"
+version = "0.1.0"
+description = "Detector characterization for astronomical imaging sensors"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "POLITE Observatory Team" }]
+keywords = ["astronomy", "calibration", "detector", "cmos", "fits"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Astronomy",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "numpy",
+    "scipy",
+    "astropy",
+    "matplotlib",
+]
+
+[tool.setuptools]
+package-dir = {"caltools" = "."}
+packages = ["caltools"]

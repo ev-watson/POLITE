@@ -1,8 +1,9 @@
-"""CMOS-audit fixes (findings C-1..C-7) for the QHY268M / IMX571 path.
+"""CMOS error model for the QHY268M / IMX571 path
+(docs/polarimetry/07_cmos_error_model.md).
 
-Covers the effective-N σ suppression (C-3; Stockmans et al. eq. 16, Source B),
-the per-pixel read-noise map (C-1), bad/hot-pixel repair (C-2), the dark-frame
-FPN injection (C-4), gain-mode provenance (C-5), and the saturation flag (C-6).
+Covers the effective-N σ suppression (Stockmans et al. eq. 16, Source B),
+the per-pixel read-noise map, bad/hot-pixel repair, the dark-frame
+FPN injection, gain-mode provenance, and the saturation/linearity flag.
 """
 
 import warnings
@@ -16,7 +17,7 @@ from poltools.photometry import _MEDIAN_VAR_INFLATION, _effective_n
 
 
 # --------------------------------------------------------------------------- #
-# C-3 — effective-N σ suppression
+# effective-N σ suppression after frame combining
 # --------------------------------------------------------------------------- #
 def test_effective_n_values():
     # N<=2 is exact for the median (frame / mean); N>=3 takes the pi/2 penalty.
@@ -76,7 +77,7 @@ def test_effective_n_sigma_matches_empirical_scatter(cfg):
 
 
 # --------------------------------------------------------------------------- #
-# C-1 — per-pixel read-noise map
+# per-pixel read-noise map (RTN/hot-pixel tail)
 # --------------------------------------------------------------------------- #
 def test_constant_ron_map_reproduces_scalar(cfg, rng):
     pos = (128.0, 128.0)
@@ -114,7 +115,7 @@ def test_ron_map_shape_mismatch_raises(cfg, rng):
 
 
 # --------------------------------------------------------------------------- #
-# C-2 — bad/hot-pixel repair (the N=1 vulnerability)
+# bad/hot-pixel repair (the N=1 vulnerability)
 # --------------------------------------------------------------------------- #
 def test_bad_pixel_mask_repairs_hot_pixel(cfg, rng):
     """A hot pixel in the o-aperture inflates the flux at N=1; the mask repairs
@@ -142,7 +143,7 @@ def test_bad_pixel_mask_repairs_hot_pixel(cfg, rng):
 
 
 # --------------------------------------------------------------------------- #
-# C-4 — 2-D dark frame (FPN / hot-pixel structure) in the simulator
+# 2-D dark frame (FPN / hot-pixel structure) in the simulator
 # --------------------------------------------------------------------------- #
 def test_dark_frame_injects_structure(cfg, rng):
     scene = pt.make_scene([], [], [])
@@ -165,7 +166,7 @@ def test_dark_frame_shape_mismatch_raises(cfg, rng):
 
 
 # --------------------------------------------------------------------------- #
-# C-5 — gain-mode provenance carried through the config
+# gain-mode provenance carried through the config
 # --------------------------------------------------------------------------- #
 def test_config_provenance_and_sat_limit(sensor):
     cfg = PolConfig(sensor=sensor, beam=pt.BeamGeometry(separation_px=40.0),
@@ -185,7 +186,7 @@ def test_config_provenance_and_sat_limit(sensor):
 
 
 # --------------------------------------------------------------------------- #
-# C-6 — saturation / linearity flag
+# saturation / linearity flag
 # --------------------------------------------------------------------------- #
 def test_saturation_flag_on_measure_pair(cfg, rng):
     pos = (128.0, 128.0)

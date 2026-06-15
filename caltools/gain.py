@@ -1,8 +1,9 @@
 """
-caltools.gain — Photon Transfer Curve, gain measurement, and FWC.
+caltools.gain — Photon transfer curve, conversion gain, and full-well capacity.
 
-PTC method: all-pairs differencing of flat-field frames across
-multiple exposure levels. Both free and fixed-intercept fits.
+The photon transfer curve plots variance versus mean signal in flat-field
+frames. Its slope gives conversion gain (electrons per ADU). Both a free-
+intercept fit and a fit with read-noise variance held fixed are reported.
 """
 
 from __future__ import annotations
@@ -85,7 +86,6 @@ def photon_transfer_curve(
     AnalysisResult with gain, RON, fit parameters in scalar_summary,
     and PTC data arrays in metadata (for plotting).
     """
-    # Prepare bias for ROI
     bias_roi = bias
     if roi is not None:
         bias_roi = bias[roi[0], roi[1]]
@@ -108,17 +108,12 @@ def photon_transfer_curve(
     signal = np.array(all_signals)
     variance = np.array(all_variances)
 
-    # Read noise variance from config (squared median RON from read_noise_spatial)
-    # Use the PTC intercept approach: estimate from the data
-    # Fit 1: Free intercept
     m_free, c_free, cov_free = _linear_least_squares(signal, variance)
     gain_free = 1.0 / m_free if m_free != 0 else np.inf
     sigma_gain_free = float(np.sqrt(cov_free[0, 0])) / (m_free ** 2) if m_free != 0 else np.inf
     ron_from_fit = float(np.sqrt(max(c_free, 0.0)))
 
-    # Fit 2: Fixed intercept — use free-fit intercept as RON² prior,
-    # or compute from bias frames if available
-    ron_var_prior = max(c_free, 0.0)  # ADU²
+    ron_var_prior = max(c_free, 0.0)
 
     var_shot = variance - ron_var_prior
     denom = float(np.dot(signal, signal))
@@ -198,13 +193,11 @@ def photon_transfer_curve_with_ron(
     signal = np.array(all_signals)
     variance = np.array(all_variances)
 
-    # Free intercept
     m_free, c_free, cov_free = _linear_least_squares(signal, variance)
     gain_free = 1.0 / m_free if m_free != 0 else np.inf
     sigma_gain_free = float(np.sqrt(cov_free[0, 0])) / (m_free ** 2) if m_free != 0 else np.inf
     ron_from_fit = float(np.sqrt(max(c_free, 0.0)))
 
-    # Fixed intercept with external prior
     var_shot = variance - ron_var_adu2
     denom = float(np.dot(signal, signal))
     m_fixed = float(np.dot(signal, var_shot)) / denom if denom > 0 else m_free
@@ -269,14 +262,10 @@ def full_well_capacity(
     max_signal_adu = float(signal.max())
     max_signal_e = max_signal_adu * gain
 
-    # Look for PTC turnover: find where variance starts decreasing
-    # Sort by signal and look for slope change
     order = np.argsort(signal)
     sig_sorted = signal[order]
     var_sorted = variance[order]
 
-    # Simple approach: find where running slope becomes negative
-    # Use a sliding window of ~10% of data points
     window = max(5, len(sig_sorted) // 10)
     turnover_adu = None
 
@@ -343,14 +332,11 @@ def noise_decomposition(
     """
     g = config.gain_e_per_adu
 
-    # Sort by signal
     order = np.argsort(ptc_signal)
     sig = ptc_signal[order]
     var_total = ptc_var[order]
 
-    # Shot noise component: S/G
     var_shot = sig / g
-    # Read noise: fit intercept (median of low-signal points)
     low_mask = sig < np.percentile(sig, 20)
     if np.sum(low_mask) > 5:
         ron2 = float(np.median(var_total[low_mask]))
@@ -359,11 +345,9 @@ def noise_decomposition(
 
     var_read = np.full_like(sig, ron2)
 
-    # Crossover point: where shot noise = read noise
-    crossover_adu = ron2 * g  # S where shot = read
+    crossover_adu = ron2 * g
     crossover_e = crossover_adu * g
 
-    # Total noise in electrons
     total_noise_e = np.sqrt(var_total) * g
     shot_noise_e = np.sqrt(var_shot) * g
     read_noise_e = np.sqrt(var_read) * g

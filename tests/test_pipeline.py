@@ -188,3 +188,24 @@ def test_calibration_applied_in_pipeline(cfg, rng, tmp_path):
     s = res.scalar_summary
     assert abs(s["q"] - q_true) < 4 * s["sigma_q"] + 1e-3
     assert abs(s["u"] - u_true) < 4 * s["sigma_u"] + 1e-3
+
+
+def test_default_method_is_lsq(cfg, rng, tmp_path):
+    """Project default (2026-06-09): lsq on flat-fielded frames; double_ratio is
+    the easily-specifiable fallback for bad-flat nights."""
+    import inspect
+    sig = inspect.signature(pt.reduce_to_stokes)
+    assert sig.parameters["method"].default == "lsq"
+
+    positions = [(128.0, 128.0)]
+    scene = pt.make_scene(positions, [(1, 0.03, -0.02, 0)], [6e6])
+    paths = pt.simulate_sequence(scene, cfg.with_hwp_angles(ANGLES8),
+                                 out_dir=tmp_path, exptime_s=15.0,
+                                 seeing_arcsec=2.0, sky_e_per_px=60.0, rng=rng,
+                                 shape=(256, 256))
+    res = pt.reduce_to_stokes([str(p) for p in paths],
+                              cfg.with_hwp_angles(ANGLES8),
+                              o_positions=positions,
+                              r_ap=7, r_in=12, r_out=20)[0]
+    assert res.metadata["method"] == "lsq"
+    assert "chi2" in res.scalar_summary  # lsq-only diagnostic made it through

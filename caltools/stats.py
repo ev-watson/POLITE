@@ -1,8 +1,8 @@
 """
 caltools.stats — Statistical utilities for detector characterization.
 
-Welford online accumulator, robust estimators, gaussianity tests,
-and per-pixel sigma-vs-mean preparation.
+Welford online accumulator, MAD-based robust sigma, gaussianity tests,
+and subsampled sigma-vs-mean preparation for PTC plots.
 """
 
 from __future__ import annotations
@@ -17,17 +17,9 @@ from ._types import Frame
 
 
 class WelfordAccumulator:
-    """Online (single-pass) mean and variance accumulator.
+    """Online mean and variance via the Welford algorithm.
 
-    Processes one frame at a time — avoids storing the full cube.
-    Uses the numerically stable Welford algorithm.
-
-    Usage
-    -----
-    >>> acc = WelfordAccumulator(shape=(ny, nx))
-    >>> for frame in frames:
-    ...     acc.update(frame)
-    >>> mean, var = acc.mean, acc.variance
+    Processes one frame at a time without storing the full cube.
     """
 
     def __init__(self, shape: Tuple[int, ...]) -> None:
@@ -69,9 +61,9 @@ class WelfordAccumulator:
 
 
 def mad_sigma(data: np.ndarray) -> float:
-    """Median absolute deviation scaled to Gaussian sigma.
+    """Robust Gaussian-equivalent scatter from the median absolute deviation.
 
-    ``sigma_MAD = 1.4826 * median(|x - median(x)|)``
+    ``sigma = 1.4826 × median(|x − median(x)|)``
     """
     med = np.median(data)
     return 1.4826 * np.median(np.abs(data - med))

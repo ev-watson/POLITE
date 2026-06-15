@@ -1,9 +1,9 @@
 """
 caltools._types — Core data structures and type aliases.
 
-Provides SensorConfig (frozen dataclass for detector parameters),
-AnalysisResult (uniform return type for all analyses), and
-type aliases for frame arrays.
+Frozen detector configuration (:class:`SensorConfig`), uniform analysis
+results (:class:`AnalysisResult`), and ndarray aliases for 2-D frames
+and 3-D cubes. Arrays use ``[row, col] == [y, x]`` with origin upper-left.
 """
 
 from __future__ import annotations
@@ -13,17 +13,11 @@ from typing import Dict, Optional, Tuple
 
 import numpy as np
 
-# ---------------------------------------------------------------------------
-# Type aliases
-# ---------------------------------------------------------------------------
-Frame = np.ndarray       # 2-D array (ny, nx)
-FrameCube = np.ndarray   # 3-D array (n_frames, ny, nx)
+Frame = np.ndarray         # 2-D (ny, nx)
+FrameCube = np.ndarray     # 3-D (n_frames, ny, nx)
 ROI = Tuple[slice, slice]  # (row_slice, col_slice)
 
 
-# ---------------------------------------------------------------------------
-# SensorConfig
-# ---------------------------------------------------------------------------
 @dataclass(frozen=True)
 class SensorConfig:
     """Immutable detector configuration.
@@ -72,9 +66,6 @@ class SensorConfig:
         )
 
 
-# ---------------------------------------------------------------------------
-# AnalysisResult
-# ---------------------------------------------------------------------------
 @dataclass
 class AnalysisResult:
     """Uniform return container for all caltools analyses.

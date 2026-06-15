@@ -1,8 +1,13 @@
 """
-caltools.noise — Read noise, banding, DSNU, FPN, and RTN detection.
+caltools.noise — Read noise, banding, dark non-uniformity, and telegraph noise.
 
-Noise measurements based on frame differencing, robust spatial statistics,
-and row/column decomposition.
+* **Read-noise maps** — frame differencing (removes fixed pattern noise) or
+  direct temporal standard deviation.
+* **Dark signal non-uniformity** — spatial scatter of dark current, split into
+  pixel, row, and column components.
+* **Fixed pattern noise** — isolated by subtracting read noise in quadrature.
+* **Random telegraph noise** — flags pixels with high temporal scatter but
+  normal mean bias level.
 """
 
 from __future__ import annotations
@@ -20,22 +25,22 @@ def read_noise_map(
     cube: FrameCube,
     method: str = "frame_diff",
 ) -> Tuple[Frame, Frame]:
-    """Compute per-pixel read noise from a bias cube.
+    """Compute per-pixel read noise from a stack of bias frames.
 
     Parameters
     ----------
     cube : FrameCube
         3-D array ``(n_frames, ny, nx)`` of bias frames.
     method : str
-        ``"frame_diff"`` — consecutive-pair differencing (removes FPN).
-        ``"temporal_std"`` — pixel-wise std across stack (includes FPN).
+        ``"frame_diff"`` — consecutive-pair differencing; removes fixed
+        pattern noise that is constant from frame to frame.
+        ``"temporal_std"`` — pixel-wise standard deviation across the stack;
+        includes fixed pattern noise.
 
     Returns
     -------
     (read_noise_map, temporal_std_map) : tuple of Frame
         Both in the same units as the input (ADU).
-        ``read_noise_map`` uses frame differencing (FPN-free).
-        ``temporal_std_map`` is direct pixel-wise temporal std.
     """
     n = cube.shape[0]
 
@@ -168,14 +173,11 @@ def dsnu(
     bias: Frame,
     config: SensorConfig,
 ) -> AnalysisResult:
-    """Compute Dark Signal Non-Uniformity decomposed into pixel/row/column.
+    """Measure how dark current varies across the detector.
 
-    DSNU = std(master_dark - bias) across the spatial dimensions.
-    The decomposition separates broad row/column structure from the
-    remaining pixel-scale component:
-      - Pixel DSNU: residual after removing row/column structure
-      - Row DSNU: std of row medians
-      - Column DSNU: std of column medians
+    Dark signal non-uniformity is the spatial standard deviation of a
+    bias-subtracted master dark. The total is decomposed into row structure,
+    column structure, and a residual pixel component.
 
     Parameters
     ----------
@@ -228,18 +230,19 @@ def fpn(
     temporal_std_map: Frame,
     rn_map: Frame,
 ) -> AnalysisResult:
-    """Isolate Fixed Pattern Noise by quadrature subtraction.
+    """Estimate fixed pattern noise by subtracting read noise in quadrature.
 
-    FPN² = temporal_std² - read_noise² (frame-diff)
-
-    The temporal std includes FPN while the frame-diff read noise does not.
+    Temporal standard deviation across bias frames includes both read noise
+    and fixed pattern noise (offset or gain that repeats every frame).
+    Frame-differencing read noise is subtracted in quadrature to isolate
+    the fixed component.
 
     Parameters
     ----------
     temporal_std_map : Frame
-        Pixel-wise temporal std across the bias stack (includes FPN).
+        Pixel-wise temporal standard deviation across the bias stack.
     rn_map : Frame
-        Frame-differencing read noise map (FPN-free).
+        Read-noise map from frame differencing (fixed pattern removed).
 
     Returns
     -------
@@ -271,10 +274,11 @@ def detect_rtn_pixels(
     config: SensorConfig,
     sigma_threshold: float = 3.0,
 ) -> AnalysisResult:
-    """Detect random telegraph noise candidate pixels.
+    """Flag pixels that may show random telegraph noise.
 
-    RTN candidates have anomalously high temporal std but normal mean
-    bias level.
+    Telegraph-noise pixels switch between discrete levels, giving high
+    temporal scatter in a bias stack while their mean stays near the bias
+    pedestal.
 
     Parameters
     ----------
@@ -283,7 +287,8 @@ def detect_rtn_pixels(
     config : SensorConfig
         Sensor configuration.
     sigma_threshold : float
-        Number of RMS-RON above which a pixel is flagged as an RTN candidate.
+        Flag when temporal scatter exceeds this many times the root-mean-square
+        read noise.
 
     Returns
     -------

@@ -1,13 +1,9 @@
 """
-poltools.stokes — Assemble normalized Stokes (q, u) into a calibrated result.
+poltools.stokes — Assemble normalized Stokes results.
 
-Computes the polarization fraction ``p``, position angle ``θ``, the MAS-debiased
-``p̂_MAS``, the full error budget (σ_p, σ_θ via both the high-SNR and the
-Naghizadeh-Khouei & Clarke low-SNR forms), SNR, and the q–u covariance, and
-packages them into a :class:`StokesResult` (caltools.AnalysisResult-compatible).
-
-All statistics are from peer-reviewed / user-provided literature (Sources A/B);
-see poltools.errors for the per-estimator citations.
+Takes fitted ``q, u`` and their uncertainties, computes polarization fraction
+and position angle, applies a debiasing estimator for the reported fraction,
+and packages everything in a :class:`~poltools._types.StokesResult`.
 """
 
 from __future__ import annotations
@@ -19,13 +15,13 @@ import numpy as np
 from ._types import StokesResult
 from . import errors
 
-# SNR above which the Gaussian σ_θ = 28.65/SNR is adopted as the reported value;
-# below it the Naghizadeh-Khouei & Clarke (1993) interval is reported.
+# Use the Gaussian position-angle formula above this polarization SNR;
+# below it, use the Naghizadeh-Khouei & Clarke (1993) interval.
 _SNR_GAUSSIAN_PA = 6.0
 
 
 def polarization_fraction_angle(q: float, u: float):
-    """Return ``(p, theta_deg)`` with ``θ`` in [0, 180)."""
+    """Return polarization fraction ``p`` and position angle ``theta_deg`` [0, 180)."""
     p = float(np.hypot(q, u))
     theta = 0.5 * np.rad2deg(np.arctan2(u, q)) % 180.0
     return p, float(theta)
@@ -33,10 +29,7 @@ def polarization_fraction_angle(q: float, u: float):
 
 def sigma_p_from_qu(q: float, u: float, sigma_q: float, sigma_u: float,
                     cov_qu: float = 0.0) -> float:
-    """Propagate (σ_q, σ_u, cov) to σ_p through ``p = sqrt(q²+u²)``.
-
-    Uses the small-p limit ``σ_p ≈ sqrt((σ_q²+σ_u²)/2)`` when p is negligible.
-    """
+    """Propagate uncertainties in q and u to uncertainty in ``p = sqrt(q² + u²)``."""
     p = np.hypot(q, u)
     if p < 1e-12:
         return float(np.sqrt(0.5 * (sigma_q ** 2 + sigma_u ** 2)))
@@ -45,30 +38,24 @@ def sigma_p_from_qu(q: float, u: float, sigma_q: float, sigma_u: float,
 
 
 def assemble_stokes(qu: Dict[str, float], I0: float = 1.0,
-                    name: str = "source", method: str = "double_ratio",
+                    name: str = "source", method: str = "lsq",
                     estimator: str = "mas",
                     provenance: Optional[Dict[str, str]] = None,
                     extra_metadata: Optional[Dict[str, object]] = None) -> StokesResult:
-    """Build a :class:`StokesResult` from a modulation result dict.
+    """Build a :class:`StokesResult` from a modulation fit dictionary.
 
     Parameters
     ----------
     qu : dict
-        Output of :func:`poltools.modulation.double_ratio`,
-        :func:`poltools.modulation.double_difference`, or
-        :func:`poltools.modulation.lsq_modulation` (must contain
-        ``q, u, sigma_q, sigma_u``; ``cov_qu`` optional).
+        Must contain ``q, u, sigma_q, sigma_u``; ``cov_qu`` optional.
     I0 : float
-        Total intensity flux (for the scalar summary / SNR reference).
-    name : str
-        Source label.
-    method : str
-        Reduction label recorded in the result metadata, e.g. "double_ratio",
-        "double_difference", or "lsq".
-    estimator : str
-        Debiasing estimator to report as ``p_mas`` default ("mas", "wk", "naive").
-    provenance : dict, optional
-        Source A/B tags carried into metadata.
+        Total intensity reference stored in the scalar summary.
+    estimator : {"mas", "wk", "naive"}
+        Which debiased polarization fraction to report as ``p_report``:
+
+        * ``mas`` — Modified Asymptotic (recommended).
+        * ``wk`` — Wardle & Kronberg square-root debiasing.
+        * ``naive`` — raw measured fraction (biased at low SNR).
     """
     q = float(qu["q"])
     u = float(qu["u"])
@@ -116,11 +103,7 @@ def assemble_stokes(qu: Dict[str, float], I0: float = 1.0,
         "method": method,
         "estimator_default": estimator,
         "pa_form": "highsnr" if snr >= _SNR_GAUSSIAN_PA else "nkc1993",
-        "provenance": provenance or {
-            "stokes_qu": "Masiero2007/DUSTPol (B/A)",
-            "debias": "Plaszczynski2014/MontierII (B)",
-            "sigma_theta": "Serkowski/NKC1993 (B)",
-        },
+        "provenance": provenance or {},
     }
     if extra_metadata:
         meta.update(extra_metadata)

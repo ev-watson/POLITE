@@ -1,8 +1,8 @@
 """
-caltools.dark — Dark current analysis, temperature dependence, warm pixels.
+caltools.dark — Dark current, temperature dependence, and warm pixels.
 
-Measures dark current from dark-frame stacks. Temperature fitting uses an
-Arrhenius/Widenhorn-style model where the data support it.
+Dark rate from exposure ramps; optional Arrhenius fit when the temperature
+range is sufficient (typically poorly constrained on narrow CMOS sweeps).
 """
 
 from __future__ import annotations
@@ -62,13 +62,11 @@ def dark_current_vs_exposure(
     exptimes = np.array(exptimes)
     mean_signals = np.array(mean_signals)
 
-    # Linear fit: signal = dark_rate * t + offset
     coeffs = np.polyfit(exptimes, mean_signals, 1)
-    dark_rate_adu = float(coeffs[0])  # ADU/pix/s
+    dark_rate_adu = float(coeffs[0])
     offset_adu = float(coeffs[1])
     dark_rate_e = dark_rate_adu * g
 
-    # R² for fit quality
     predicted = np.polyval(coeffs, exptimes)
     ss_res = np.sum((mean_signals - predicted) ** 2)
     ss_tot = np.sum((mean_signals - np.mean(mean_signals)) ** 2)
@@ -148,7 +146,6 @@ def dark_current_vs_temperature(
     temps = np.array(temps)
     dark_rates = np.array(dark_rates)
 
-    # Attempt Arrhenius fit
     scalars = {
         "temperatures_c": list(temps),
         "dark_rates_e_per_s": list(dark_rates),
@@ -254,7 +251,6 @@ def warm_pixel_map(
         paths = dark_cube[exp]
         md = master_dark(paths, bias, roi=roi)
 
-        # Warm pixel mask
         warm = outlier_mask(md, threshold_sigma=threshold_sigma, use_mad=True)
         n_warm = int(np.sum(warm))
         frac = n_warm / md.size

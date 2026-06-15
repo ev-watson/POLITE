@@ -1,7 +1,7 @@
 """
-caltools.plotting — Visualization helpers for detector characterization.
+caltools.plotting — Diagnostic figures for detector characterization.
 
-Figure helpers used throughout the reduction notebook.
+Images use ``origin='upper'`` (astronomical convention).
 """
 
 from __future__ import annotations

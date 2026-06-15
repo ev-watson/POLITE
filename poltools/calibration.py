@@ -1,16 +1,16 @@
 """
-poltools.calibration — Standard-star calibration (Mueller/IP chain inversion).
+poltools.calibration — Standard-star calibration.
 
-Implements the publication calibration steps (Masiero 2007 §3, DUSTPol §3,
-Serkowski 1974 — Sources B/A):
+Three corrections applied in order (Masiero et al. 2007; DUSTPol commissioning):
 
-1. **Instrumental polarization** (q0, u0) from *unpolarized* standards
-   (true p≈0 ⇒ measured q,u = IP). Subtract in q–u space.
-2. **Position-angle zero-point** Δθ from *polarized* standards with known θ_lit.
-   Rotate q,u by 2Δθ to the equatorial (N→E) frame.
-3. **Polarization efficiency** from highly-polarized standards: divide p by eff.
+1. **Instrumental polarization** — subtract the telescope's intrinsic
+   ``(q₀, u₀)``, measured from unpolarized standard stars.
+2. **Modulation efficiency** — divide ``(q, u)`` by the polarimeter's
+   efficiency, measured from highly polarized standards.
+3. **Position-angle zero-point** — rotate ``(q, u)`` by ``2Δθ`` so measured
+   angles match the literature values of polarized standards.
 
-A :class:`PolCalibration` bundles the three and applies them in order.
+:class:`PolCalibration` bundles the three corrections and applies them together.
 """
 
 from __future__ import annotations
@@ -25,9 +25,10 @@ def fit_instrumental_polarization(
     q: Sequence[float], u: Sequence[float],
     weights: Optional[Sequence[float]] = None,
 ) -> Tuple[float, float, np.ndarray]:
-    """IP (q0, u0) as the (weighted) mean q,u of unpolarized standards.
+    """Instrumental polarization as the weighted mean of unpolarized standards.
 
-    Returns ``(q0, u0, cov)`` with ``cov`` the 2x2 covariance of the means.
+    Returns ``(q0, u0, covariance)`` where ``covariance`` is the 2×2 covariance
+    of the means.
     """
     q = np.asarray(q, dtype=float)
     u = np.asarray(u, dtype=float)
@@ -44,12 +45,12 @@ def fit_instrumental_polarization(
 
 
 def apply_ip(q: float, u: float, q0: float, u0: float) -> Tuple[float, float]:
-    """Subtract instrumental polarization in q–u space."""
+    """Subtract instrumental polarization in normalized Stokes space."""
     return q - q0, u - u0
 
 
 def _wrap_pa(dtheta_deg: float) -> float:
-    """Wrap a PA difference into (−90, 90] degrees."""
+    """Wrap a position-angle difference into (−90, 90] degrees."""
     return (dtheta_deg + 90.0) % 180.0 - 90.0
 
 
@@ -57,9 +58,10 @@ def fit_pa_zeropoint(
     theta_meas_deg: Sequence[float], theta_lit_deg: Sequence[float],
     weights: Optional[Sequence[float]] = None,
 ) -> Tuple[float, float]:
-    """PA zero-point Δθ = <θ_lit − θ_meas> (wrapped) from polarized standards.
+    """Position-angle zero-point from polarized standards.
 
-    Returns ``(dtheta_deg, sigma_deg)``.
+    ``Δθ`` is the weighted mean of ``θ_literature − θ_measured`` (wrapped).
+    Returns ``(delta_theta_deg, uncertainty_deg)``.
     """
     tm = np.asarray(theta_meas_deg, dtype=float)
     tl = np.asarray(theta_lit_deg, dtype=float)
@@ -73,7 +75,7 @@ def fit_pa_zeropoint(
 
 
 def apply_pa_zeropoint(q: float, u: float, dtheta_deg: float) -> Tuple[float, float]:
-    """Rotate (q, u) by 2Δθ to correct the PA zero-point."""
+    """Rotate (q, u) by ``2Δθ`` to correct the position-angle zero-point."""
     a = 2.0 * np.deg2rad(dtheta_deg)
     c, s = np.cos(a), np.sin(a)
     return q * c - u * s, q * s + u * c
@@ -83,7 +85,7 @@ def fit_efficiency(
     p_meas: Sequence[float], p_lit: Sequence[float],
     weights: Optional[Sequence[float]] = None,
 ) -> float:
-    """Polarization efficiency = <p_meas / p_lit> from polarized standards."""
+    """Modulation efficiency as the weighted mean of ``p_measured / p_literature``."""
     pm = np.asarray(p_meas, dtype=float)
     pl = np.asarray(p_lit, dtype=float)
     ratios = pm / pl
@@ -93,7 +95,7 @@ def fit_efficiency(
 
 
 def apply_efficiency(q: float, u: float, efficiency: float) -> Tuple[float, float]:
-    """Divide the polarization vector by the efficiency."""
+    """Divide the polarization vector by the modulation efficiency."""
     if efficiency == 0:
         return q, u
     return q / efficiency, u / efficiency
@@ -101,9 +103,10 @@ def apply_efficiency(q: float, u: float, efficiency: float) -> Tuple[float, floa
 
 @dataclass(frozen=True)
 class PolCalibration:
-    """Bundled calibration: IP subtraction, PA zero-point, efficiency.
+    """Bundled standard-star calibration.
 
-    Apply order: IP → efficiency → PA zero-point.
+    Apply order: instrumental polarization → efficiency → position-angle
+    zero-point.
     """
 
     q0: float = 0.0
