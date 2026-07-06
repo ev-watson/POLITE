@@ -17,6 +17,7 @@ __pycache__/
 .idea/
 .vscode/
 .claude/
+.cursor/
 
 # temporary images and outputs
 tmpimg/
@@ -24,8 +25,11 @@ final-imgs/
 
 # local dev / project management
 CLAUDE.md
+handoff.md
+MANUAL.md
 prompts/
 reference-sheets/
+tests/
 docs/
 reports/
 *.ipynb

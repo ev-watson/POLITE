@@ -1,0 +1,30 @@
+# Shared brick palette + target catalog for POLITE night plans.
+# Reused night to night; per-night files import this with `uses: palette.yaml`.
+#
+# Brick types: stack | pol_seq | filter_loop | cal   (see obs_utils/night_plan.py)
+# Filter names must match the ZWO EFW slots (obs_utils.config.AlpacaConfig).
+
+bricks:
+  # --- polarimetry (HWP sequences on the Pyxis) ---
+  # angles: N  ->  N equally spaced 22.5 deg steps (4|8|16 standard). n = frames/angle.
+  polV8:  {type: pol_seq, filter: "Photometric V", angles: 8,  exp: 30, n: 1}
+  polV16: {type: pol_seq, filter: "Photometric V", angles: 16, exp: 30, n: 1}
+  polR8:  {type: pol_seq, filter: "Photometric R", angles: 8,  exp: 30, n: 1}
+
+  # --- plain imaging stacks ---
+  L60x10: {type: stack, filter: Clear, exp: 60, n: 10}
+  V30x20: {type: stack, filter: "Photometric V", exp: 30, n: 20}
+  BVR45:  {type: filter_loop,
+           filters: ["Photometric B", "Photometric V", "Photometric R"],
+           exp: 45, n: 5}
+
+  # --- calibration ---
+  bias:    {type: cal, frame: BIAS, exp: 0,  n: 20}
+  darks60: {type: cal, frame: DARK, exp: 60, n: 15}
+  darks30: {type: cal, frame: DARK, exp: 30, n: 15}
+
+# Target catalog: names used bare in a plan resolve RA[hours] / Dec[deg] here (J2000).
+catalog:
+  M42:     {ra: 5.591, dec: -5.389}
+  HD14069: {ra: 2.283, dec: 39.663}   # low-polarization standard
+  BD+64106: {ra: 0.960, dec: 64.253}  # high-polarization standard

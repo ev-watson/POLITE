@@ -7,9 +7,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Union
 
-from alpyca_tools.fits_writer import FitsHeaderConfig
+from alpyca_tools.fits_writer import FitsHeaderConfig, PolarimetryCards
 
-from .imaging import CaptureRequest, capture_fits_file, select_filter
+from .imaging import CaptureRequest, capture_fits_file, select_filter, select_hwp_angle
 from .mount import slew_altaz, slew_radec_j2000, wait_for_slew
 from .startup import StartupConfig, startup_observatory
 
@@ -35,6 +35,12 @@ class FramePlan:
     readout_mode: Optional[int] = None
     sub_exposure_duration: Optional[float] = None
     fast_readout: Optional[bool] = None
+    # Polarimetry: when hwp_angle_deg is set, the Pyxis half-wave plate is moved
+    # to this angle before the frame(s) and HWPANG/POLSEQ cards are written.
+    hwp_angle_deg: Optional[float] = None
+    retardance_deg: Optional[float] = None
+    pol_seq_id: Optional[str] = None
+    pol_seq_index: Optional[int] = None
 
 
 @dataclass
@@ -208,6 +214,15 @@ def _build_header_config(
     if dec is None and target and target.dec_deg is not None:
         dec = _format_degs(target.dec_deg)
 
+    polarimetry = None
+    if plan.hwp_angle_deg is not None:
+        polarimetry = PolarimetryCards(
+            hwp_angle_deg=plan.hwp_angle_deg,
+            retardance_deg=plan.retardance_deg,
+            pol_seq_id=plan.pol_seq_id,
+            pol_seq_index=plan.pol_seq_index,
+        )
+
     return FitsHeaderConfig(
         imagetyp=plan.frame_type.upper(),
         object_name=object_name,
@@ -219,6 +234,7 @@ def _build_header_config(
         ra=ra,
         dec=dec,
         ha=ha,
+        polarimetry=polarimetry,
     )
 
 
@@ -239,6 +255,10 @@ def _run_frames(
         if plan.filter is not None:
             logger.info("Selecting filter: %s", plan.filter)
             select_filter(session, plan.filter)
+
+        if plan.hwp_angle_deg is not None:
+            logger.info("Setting HWP angle: %.2f deg", plan.hwp_angle_deg)
+            select_hwp_angle(session, plan.hwp_angle_deg)
 
         for idx in range(1, plan.count + 1):
             request = CaptureRequest(

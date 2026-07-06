@@ -9,7 +9,7 @@ import numpy as np
 from alpyca_tools.camera_ops import ExposureSettings, capture_image
 from alpyca_tools.fits_writer import FitsHeaderConfig, capture_fits
 
-from .alpaca import ImagingSession, open_imaging_session, set_filter_position
+from .alpaca import ImagingSession, move_rotator_absolute, open_imaging_session, set_filter_position
 from .config import AlpacaConfig
 
 
@@ -37,6 +37,7 @@ def open_session(config: AlpacaConfig) -> ImagingSession:
         guide_camera_index=config.guide_camera_index,
         filterwheel_index=config.filterwheel_index,
         filter_names=config.filter_names,
+        rotator_index=config.rotator_index,
     )
 
 
@@ -121,6 +122,27 @@ def select_filter(
         session.filter_wheel,
         position,
         names_override=session.filter_names,
+        poll_s=poll_s,
+        timeout_s=timeout_s,
+    )
+
+
+def select_hwp_angle(
+    session: ImagingSession,
+    angle_deg: float,
+    poll_s: float = 0.5,
+    timeout_s: float = 120.0,
+) -> float:
+    """Rotate the half-wave plate (Optec Pyxis) to an absolute angle [deg].
+
+    Blocks until the rotator settles and returns its reported position. Raises
+    if no HWP rotator is connected in this session.
+    """
+    if session.rotator is None:
+        raise RuntimeError("No HWP rotator connected")
+    return move_rotator_absolute(
+        session.rotator,
+        angle_deg,
         poll_s=poll_s,
         timeout_s=timeout_s,
     )

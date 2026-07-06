@@ -1,5 +1,13 @@
-from .config import AlpacaConfig, Pwi4Config, SkyRegionLimit, SlewLimits, default_sky_regions
-from .imaging import CaptureRequest, capture_fits_file, capture_image_array, close_session, open_session, select_filter
+from .config import (
+    AlpacaConfig,
+    Pwi4Config,
+    PyxisSerialConfig,
+    SkyRegionLimit,
+    SlewLimits,
+    default_sky_regions,
+)
+from .pyxis_gen3 import PyxisError, PyxisGen3, PyxisTimeout, connect_pyxis_gen3
+from .imaging import CaptureRequest, capture_fits_file, capture_image_array, close_session, open_session, select_filter, select_hwp_angle
 from .mount import (
     connect_mount,
     enable_motors,
@@ -13,6 +21,7 @@ from .mount import (
 from .startup import StartupConfig, StartupState, startup_observatory
 from .logging import LogPaths, LoggingConfig, build_log_paths, setup_logging
 from .night_session import FramePlan, NightSessionConfig, TargetPlan, run_night_session
+from .night_plan import NightPlanError, describe, load_night_plan
 from .autoguide import (
     GuidePulse,
     autoguide_from_offsets,
@@ -21,20 +30,26 @@ from .autoguide import (
     pulse_guide,
     random_dither_mount_offset_arcsec,
 )
-from .user_config import ALPACA_CONFIG, PWI4_CONFIG
+from .user_config import ALPACA_CONFIG, PWI4_CONFIG, PYXIS_CONFIG
 
 __all__ = [
     "AlpacaConfig",
     "Pwi4Config",
+    "PyxisSerialConfig",
     "SkyRegionLimit",
     "SlewLimits",
     "default_sky_regions",
+    "PyxisGen3",
+    "PyxisError",
+    "PyxisTimeout",
+    "connect_pyxis_gen3",
     "CaptureRequest",
     "capture_fits_file",
     "capture_image_array",
     "close_session",
     "open_session",
     "select_filter",
+    "select_hwp_angle",
     "connect_mount",
     "enable_motors",
     "home_mount",
@@ -54,6 +69,9 @@ __all__ = [
     "TargetPlan",
     "NightSessionConfig",
     "run_night_session",
+    "NightPlanError",
+    "describe",
+    "load_night_plan",
     "GuidePulse",
     "autoguide_from_offsets",
     "dither_mount_offset_arcsec",
@@ -62,4 +80,5 @@ __all__ = [
     "random_dither_mount_offset_arcsec",
     "ALPACA_CONFIG",
     "PWI4_CONFIG",
+    "PYXIS_CONFIG",
 ]

@@ -11,13 +11,58 @@ class Pwi4Config:
 
 
 @dataclass
+class PyxisSerialConfig:
+    """Direct-serial config for the Optec Pyxis 2" Gen3 HWP rotator.
+
+    The Gen3 controller uses a framed serial protocol that INDIGO's legacy
+    ``indigo_rotator_optec`` cannot speak, so POLITE drives it natively over
+    serial (bypassing INDIGO/Alpaca for the rotator only; camera + EFW stay on
+    INDIGO->Alpaca, mount + field rotator stay on PWI4). See
+    ``obs_utils.pyxis_gen3`` and
+    ``reference-sheets/hardware/pyxis-command-processing-rev2.md``.
+
+    On macOS use the ``/dev/cu.*`` node (not ``/dev/tty.*``). The Optec FTDI
+    cable enumerated as ``/dev/cu.usbserial-OP7XD6WD`` during bring-up; confirm
+    with ``ls /dev/cu.usbserial*``. Baud is not stated by the manual -- 19200 is
+    the most likely value and ``autodetect_baud`` probes the rest.
+    """
+
+    enabled: bool = False
+    port: str = "/dev/cu.usbserial-OP7XD6WD"
+    baud: int = 19200
+    autodetect_baud: bool = True
+
+
+@dataclass
 class AlpacaConfig:
+    """Alpaca device mapping for the INDIGO ``indigo_agent_alpaca`` bridge.
+
+    On the lab Mac / observatory, INDIGO exposes the QHY268M, ZWO EFW, and Optec
+    Pyxis (HWP stage) as ASCOM Alpaca devices on one endpoint (default :11111).
+    Confirm the assigned device numbers in the INDIGO Control Panel
+    (``AGENT_ALPACA_DEVICES``) during bring-up. The PlaneWave mount + field
+    rotator stay on PWI4 and are not represented here.
+    """
+
     host: str = "localhost:11111"
-    camera_index: int = 0  # ASCOM Remote Server device index for SBIGImagingCamera
-    guide_camera_index: Optional[int] = 1  # ASCOM Remote Server device index for SBIGGuidingCamera
-    filterwheel_index: Optional[int] = 0  # ASCOM Remote Server device index for SBIG filter wheel
+    camera_index: int = 0  # Alpaca Camera # for the QHY268M (indigo_ccd_qhy2)
+    # QHY268M is a single mono CMOS with no internal guide chip; leave None
+    # unless a separate guide camera is wired as its own INDIGO/Alpaca device.
+    guide_camera_index: Optional[int] = None
+    filterwheel_index: Optional[int] = 0  # Alpaca FilterWheel # for the ZWO EFW (indigo_wheel_asi)
+    # Optec Pyxis 2" carrying the half-wave plate (indigo_rotator_optec). None
+    # disables HWP control (e.g. plain imaging with no polarimetry stage).
+    rotator_index: Optional[int] = None
+    # ZWO 5-slot EFW labels; must match the poltools FilterConfig / FITS FILTER
+    # keyword (see poltools.default_efw_filters).
     filter_names: List[str] = field(
-        default_factory=lambda: ["Clear/Luminance", "Red", "Blue", "Green", "Halpha"]
+        default_factory=lambda: [
+            "Photometric B",
+            "Photometric V",
+            "Photometric R",
+            "Clear",
+            "Dark",
+        ]
     )
 
 

@@ -1,0 +1,21 @@
+# Example per-night plan. Copy to night_plans/<YYYY-MM-DD>.yaml and edit.
+# Preview:  scripts/plan_night.py night_plans/example.yaml
+# Run:      scripts/plan_night.py night_plans/example.yaml --run
+
+uses: palette.yaml          # import the shared brick palette + catalog
+session: "20260710"
+observer: "E. Watson"
+calibrate_stage: after      # before | after | both
+
+# Lay bricks under targets. A bare name resolves coords from the catalog;
+# a lay item can carry inline overrides, e.g. {polV8: {exp: 45}}.
+plan:
+  - HD14069: [polV8]                        # low-pol standard, quick check
+  - M42:     [{polV8: {exp: 45}}, L60x10]   # override exposure for this target
+  - BD+64106: [polV16]                      # high-pol standard, full sequence
+  - {target: NGC1499, ra: 4.0, dec: 36.6, lay: [polR8]}   # inline coords
+  - cal: [darks60, bias]
+
+# Per-night tweaks to shared bricks (applied everywhere they're laid this night):
+# override:
+#   polV8: {exp: 45}
