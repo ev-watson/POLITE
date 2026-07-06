@@ -82,45 +82,45 @@ def _default_pyxis_baud() -> int:
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--host", default="localhost:11111", help="Alpaca host:port (INDIGO alpaca agent)")
+    p.add_argument("-H", "--host", default="localhost:11111", help="Alpaca host:port (INDIGO alpaca agent)")
 
     # Rotator backend (choose one). Lab Mac = --pyxis-serial; observatory = --rotator N.
-    p.add_argument("--pyxis-serial", action="store_true",
+    p.add_argument("-p-serial", "--pyxis-serial", action="store_true",
                    help="Drive the Pyxis Gen3 HWP over native serial (lab Mac; obs_utils.pyxis_gen3)")
-    p.add_argument("--rotator", type=int,
+    p.add_argument("-r", "--rotator", type=int,
                    help="Alpaca device number for the rotator (observatory Alpaca path, NOT lab Gen3)")
-    p.add_argument("--filterwheel", type=int, help="Alpaca device number for the ZWO EFW")
-    p.add_argument("--camera", type=int, help="Alpaca device number for the QHY268M")
+    p.add_argument("-fw", "--filterwheel", type=int, help="Alpaca device number for the ZWO EFW")
+    p.add_argument("-C", "--camera", type=int, help="Alpaca device number for the QHY268M")
 
     # Rotator test (shared).
-    p.add_argument("--rotate-to", type=float, default=90.0, help="Target position angle [deg]")
+    p.add_argument("-rt", "--rotate-to", type=float, default=90.0, help="Target position angle [deg]")
 
     # Native serial (Pyxis Gen3) options.
-    p.add_argument("--pyxis-port", default=None,
+    p.add_argument("-p-port", "--pyxis-port", default=None,
                    help="Serial device for the Pyxis (default: PYXIS_CONFIG.port)")
-    p.add_argument("--pyxis-baud", type=int, default=None,
+    p.add_argument("-p-baud", "--pyxis-baud", type=int, default=None,
                    help="Baud to try first (default: PYXIS_CONFIG.baud)")
-    p.add_argument("--pyxis-no-autodetect", action="store_true",
+    p.add_argument("-p-noauto", "--pyxis-no-autodetect", action="store_true",
                    help="Do not probe other baud rates if the first fails")
-    p.add_argument("--pyxis-home", action="store_true",
+    p.add_argument("-p-home", "--pyxis-home", action="store_true",
                    help="Run the Pyxis homing routine (physical motion)")
-    p.add_argument("--pyxis-move", action="store_true",
+    p.add_argument("-p-move", "--pyxis-move", action="store_true",
                    help="Move the Pyxis to --rotate-to (physical motion; needs a homed rotator)")
-    p.add_argument("--home-timeout", type=float, default=180.0, help="Pyxis homing timeout [s]")
-    p.add_argument("--move-timeout", type=float, default=120.0, help="Rotator move timeout [s]")
-    p.add_argument("--poll", type=float, default=0.5, help="Status poll interval during move/home [s]")
+    p.add_argument("-ht", "--home-timeout", type=float, default=180.0, help="Pyxis homing timeout [s]")
+    p.add_argument("-mt", "--move-timeout", type=float, default=120.0, help="Rotator move timeout [s]")
+    p.add_argument("-pl", "--poll", type=float, default=0.5, help="Status poll interval during move/home [s]")
 
     # Filter test.
-    p.add_argument("--filter-slot", type=int, default=1, help="Target filter slot index (0-based)")
+    p.add_argument("-fs", "--filter-slot", type=int, default=1, help="Target filter slot index (0-based)")
 
     # Camera test.
-    p.add_argument("--exposure", type=float, default=1.0, help="Exposure time [s]")
-    p.add_argument("--dark", action="store_true", help="Take a dark frame (shutter closed)")
-    p.add_argument("--gain", type=int, help="Camera gain")
-    p.add_argument("--offset", type=int, help="Camera offset")
-    p.add_argument("--out", default="./lab_trial.fits", help="Output FITS path")
+    p.add_argument("-exp", "--exposure", type=float, default=1.0, help="Exposure time [s]")
+    p.add_argument("-d", "--dark", action="store_true", help="Take a dark frame (shutter closed)")
+    p.add_argument("-g", "--gain", type=int, help="Camera gain")
+    p.add_argument("-o", "--offset", type=int, help="Camera offset")
+    p.add_argument("-O", "--out", default="./lab_trial.fits", help="Output FITS path")
 
-    p.add_argument("--timeout", type=float, default=300.0, help="Exposure timeout [s]")
+    p.add_argument("-to", "--timeout", type=float, default=300.0, help="Exposure timeout [s]")
     return p.parse_args()
 
 

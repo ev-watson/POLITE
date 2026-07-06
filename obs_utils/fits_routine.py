@@ -17,7 +17,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import numpy as np
 from alpyca_tools.camera_device import CameraDevice
-from alpaca.camera import ImageArrayElementTypes
+from alpyca_tools.camera_ops import download_image
 from astropy.io import fits
 
 
@@ -95,31 +95,15 @@ class CaptureConfig:
 
 def _alpaca_image_to_numpy(c: CameraDevice) -> Tuple[np.ndarray, np.dtype]:
     """
-    Convert alpyca ImageArray (+ ImageArrayInfo) to a numpy array with astropy-compatible axis order.
-    alpyca returns nested lists with axes that typically need transposition.
+    Retrieve the exposed image as a numpy array with astropy-compatible axis order.
+
+    Delegates to ``alpyca_tools.camera_ops.download_image``, which decodes the
+    Alpaca ImageBytes stream directly via ``np.frombuffer``. That avoids
+    ``alpaca.camera``'s Int32 reconstruction bug on 64-bit macOS/Linux (it uses
+    ``array.array('l')``, which is 8 bytes there rather than the assumed 4).
     """
-    img = c.ImageArray
-    info = c.ImageArrayInfo
-
-    if info.ImageElementType == ImageArrayElementTypes.Int32:
-        # Common convention: if camera max ADU fits in uint16, write as uint16 with BZERO/BSCALE
-        if c.MaxADU <= 65535:
-            dtype = np.uint16
-        else:
-            dtype = np.int32
-    elif info.ImageElementType == ImageArrayElementTypes.Double:
-        dtype = np.float64
-    else:
-        # Conservative fallback
-        dtype = np.int32
-
-    if info.Rank == 2:
-        nda = np.array(img, dtype=dtype).transpose()
-    else:
-        # Some devices return (plane, y, x) or (x,y,plane) depending on driver; this matches alpyca example.
-        nda = np.array(img, dtype=dtype).transpose(2, 1, 0)
-
-    return nda, np.dtype(dtype)
+    data, _info, dtype = download_image(c)
+    return data, dtype
 
 
 def _set_card(hdr: fits.Header, key: str, value: Any, comment: Optional[str] = None) -> None:
@@ -291,10 +275,7 @@ def capture_fits(cfg: CaptureConfig, out_file: Union[str, Path]) -> Path:
         hdu = fits.PrimaryHDU(data=data, header=hdr)
         hdul = fits.HDUList([hdu])
 
-        if cfg.add_checksum:
-            hdul.add_checksum()
-
-        hdul.writeto(out_path, overwrite=True, output_verify="fix")
+        hdul.writeto(out_path, overwrite=True, output_verify="fix", checksum=cfg.add_checksum)
 
         return out_path
 

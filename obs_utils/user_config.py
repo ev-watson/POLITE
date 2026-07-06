@@ -27,16 +27,16 @@ PWI4_CONFIG = Pwi4Config(
 PYXIS_CONFIG = PyxisSerialConfig(
     enabled=False,
     port="/dev/cu.usbserial-OP7XD6WD",
-    baud=19200,
+    baud=115200,
     autodetect_baud=True,
 )
 
 ALPACA_CONFIG = AlpacaConfig(
     host="localhost:11111",
-    camera_index=0,
+    camera_index=2,
     guide_camera_index=None,   # QHY268M has no internal guide chip
-    filterwheel_index=0,
-    rotator_index=None,        # set to the Pyxis Alpaca # to enable HWP control
+    filterwheel_index=1,
+    rotator_index=0,        # set to the Pyxis Alpaca # to enable HWP control
     filter_names=[
         "Photometric B",
         "Photometric V",

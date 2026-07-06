@@ -436,7 +436,7 @@ class PyxisGen3:
 
 def connect_pyxis_gen3(
     port: str,
-    baud: int = 19200,
+    baud: int = 115200,
     *,
     autodetect: bool = True,
     baud_candidates: Optional[Sequence[int]] = None,

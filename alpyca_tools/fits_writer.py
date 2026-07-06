@@ -165,10 +165,7 @@ def write_fits(
     hdu = fits.PrimaryHDU(data=data, header=header)
     hdul = fits.HDUList([hdu])
 
-    if add_checksum:
-        hdul.add_checksum()
-
-    hdul.writeto(out_path, overwrite=True, output_verify="fix")
+    hdul.writeto(out_path, overwrite=True, output_verify="fix", checksum=add_checksum)
     return out_path
 
 
