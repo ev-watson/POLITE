@@ -17,7 +17,7 @@ Device split:
 ## Observatory Windows — QHY268M SDK-direct bring-up
 
 When the QHY ASCOM driver fails but EZCAP works, the camera uses a separate
-SDK-direct Alpaca server on **:11112** (`third_party/alpaca-qhyccd-camera`).
+SDK-direct Alpaca server on **:11112** (`qhy_alpaca/`).
 EFW + Pyxis stay on ASCOM Remote Server **:11111**.
 
 ```powershell

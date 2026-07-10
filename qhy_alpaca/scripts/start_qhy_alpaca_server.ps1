@@ -1,7 +1,7 @@
 # Start the POLITE QHY268M Alpaca camera server (SDK-direct, bypasses ASCOM COM).
 # Run from the observatory Windows PC in PowerShell:
 #
-#   cd C:\path\to\POLITE\third_party\alpaca-qhyccd-camera
+#   cd C:\path\to\POLITE\qhy_alpaca
 #   .\scripts\start_qhy_alpaca_server.ps1
 #
 # Prerequisites:
@@ -24,8 +24,8 @@ if (-not (Test-Path $Config)) {
 $env:QHYCCD_ALPACA_CONFIG = $Config
 $env:PYTHONPATH = $Src
 
-# Prefer POLITE repo venv (one level up from third_party/).
-$PoliteRoot = (Resolve-Path (Join-Path $Root "..\..")).Path
+# Prefer POLITE repo venv (qhy_alpaca/ sits at the repo root).
+$PoliteRoot = (Resolve-Path (Join-Path $Root "..")).Path
 $VenvPy = Join-Path $PoliteRoot ".venv\Scripts\python.exe"
 if (Test-Path $VenvPy) {
     $Python = $VenvPy

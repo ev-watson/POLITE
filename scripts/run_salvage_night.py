@@ -39,7 +39,9 @@ from obs_utils.night_session import (
     _flush_pol_config_sidecar,
     _run_cal_frames,
     _run_frames,
+    plan_total_frames,
 )
+from obs_utils.night_display import NightReporter, total_frame_count
 from obs_utils import interactive
 
 logger = logging.getLogger("salvage")
@@ -170,42 +172,54 @@ def run(plan_path: Path, *, skip_filter_check: bool, assume_yes: bool) -> int:
             )
 
     stage = config.calibration_stage
-    if config.calibration_before and stage in ("before", "both"):
-        _run_cal_frames(
-            state, config, config.calibration_before, session_dir, polite_date,
-            None, block_log, "before",
-        )
-        _flush()
+    reporter = NightReporter(plan_total_frames(config), title=f"SALVAGE {session_id}")
+    with reporter:
+        reporter.banner([
+            ("session", session_id),
+            ("data dir", session_dir),
+            ("mode", "NO-MOUNT salvage (camera+EFW+HWP only)"),
+            ("targets", ", ".join(t.name for t in config.targets) or "(none)"),
+            ("total frames", plan_total_frames(config)),
+        ])
+        if config.calibration_before and stage in ("before", "both"):
+            _run_cal_frames(
+                state, config, config.calibration_before, session_dir, polite_date,
+                None, block_log, "before", reporter=reporter,
+            )
+            _flush()
 
-    for target in config.targets:
-        if _is_rotation_target(target.name):
-            print("\n" + "=" * 70)
-            print(f"MANUAL STEP for '{target.name}':")
-            print("  Rotate the WHOLE polarimeter (field rotator) +45 deg, then")
-            print("  confirm BOTH Savart beams are still on the detector.")
-            print("=" * 70)
-            if not assume_yes:
-                input("Press Enter when the rotation is done and beams confirmed ... ")
-        logger.info("Target: %s", target.name)
-        _run_frames(
-            imaging, None, target.frames, session_dir, target, config,
-            ntp_status=None, date_str=polite_date,
-            block_log=block_log, block_id=target.name,
-        )
-        _flush()
+        for target in config.targets:
+            if _is_rotation_target(target.name):
+                reporter.note("", style="stone")
+                reporter.note("=" * 70, style="plum")
+                reporter.note(f"MANUAL STEP for '{target.name}':", style="mauve")
+                reporter.note("  Rotate the WHOLE polarimeter (field rotator) +45 deg, then", style="stone")
+                reporter.note("  confirm BOTH Savart beams are still on the detector.", style="stone")
+                reporter.note("=" * 70, style="plum")
+                if not assume_yes:
+                    input("Press Enter when the rotation is done and beams confirmed ... ")
+            logger.info("Target: %s", target.name)
+            reporter.start_block(target.name, subtitle=f"{total_frame_count(target.frames)} frames")
+            _run_frames(
+                imaging, None, target.frames, session_dir, target, config,
+                ntp_status=None, date_str=polite_date,
+                block_log=block_log, block_id=target.name, reporter=reporter,
+            )
+            _flush()
 
-    if config.calibration_after and stage in ("after", "both"):
-        _run_cal_frames(
-            state, config, config.calibration_after, session_dir, polite_date,
-            None, block_log, "after",
-        )
-        _flush()
+        if config.calibration_after and stage in ("after", "both"):
+            _run_cal_frames(
+                state, config, config.calibration_after, session_dir, polite_date,
+                None, block_log, "after", reporter=reporter,
+            )
+            _flush()
 
-    if config.capture_context is not None:
-        _flush_pol_config_sidecar(
-            session_dir, config.capture_context, session_id=session_id,
-            block_log=block_log, final=True,
-        )
+        if config.capture_context is not None:
+            _flush_pol_config_sidecar(
+                session_dir, config.capture_context, session_id=session_id,
+                block_log=block_log, final=True,
+            )
+        reporter.note("✓ Salvage session complete", style="moss")
     logger.info("Salvage session complete. Data in %s", session_dir)
     return 0
 

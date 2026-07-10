@@ -10,10 +10,10 @@
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $VenvPy = Join-Path $Root ".venv\Scripts\python.exe"
-$Scan = Join-Path $Root "third_party\alpaca-qhyccd-camera\scripts\scan_qhy_cameras.py"
+$Scan = Join-Path $Root "qhy_alpaca\scripts\scan_qhy_cameras.py"
 
 if (-not (Test-Path $Scan)) {
-    Write-Error "Missing $Scan — git pull the latest POLITE repo."
+    Write-Error "Missing $Scan ï¿½ git pull the latest POLITE repo."
 }
 
 if (Test-Path $VenvPy) {

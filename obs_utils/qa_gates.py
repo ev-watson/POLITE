@@ -75,7 +75,12 @@ def dispatch_qa_gate(
     else:
         result = fn(session_dir, **args)
 
-    logger.info("QA gate %s (%s): %s", gate.handler, target_name or cal_brick, result.messages)
+    who = target_name or cal_brick
+    log = logger.error if result.level == "FAIL" else (
+        logger.warning if result.level == "WARN" else logger.info)
+    log("QA gate %s [%s] (%s): %s", gate.handler, result.level, who, result.messages)
+    for w in result.warnings:
+        logger.warning("QA gate %s WARN (%s): %s", gate.handler, who, w)
     if not result.passed and abort:
         raise RuntimeError(f"QA gate {gate.handler} failed: {result.messages}")
     return result

@@ -444,10 +444,15 @@ class CameraDevice:
         # Readout mode
         self._readout_mode = defaults.readout_mode
 
-        # Enable GPS time stamping (do not raise on failure)
-        res = self.libqhyccd.SetQHYCCDParam(self.handle, QHY_CONTROL.GPS, c_double(1.0))
-        if res != QHY_SUCCESS:
-            logger.warning("Could not enable GPS timestamping")
+        # Enable GPS time stamping only on cameras that carry a GPS receiver.
+        # On non-GPS cameras (e.g. QHY268M) the header is meaningless and, if
+        # parsed, yields a bogus 1990s DATE-OBS — so leave it disabled.
+        if defaults.has_gps:
+            res = self.libqhyccd.SetQHYCCDParam(self.handle, QHY_CONTROL.GPS, c_double(1.0))
+            if res != QHY_SUCCESS:
+                logger.warning("Could not enable GPS timestamping")
+        else:
+            logger.info("GPS timestamping disabled (defaults.has_gps=false); using system clock")
 
         # CCD temperature
         self.set_ccd_temperature = defaults.temperature
@@ -715,43 +720,66 @@ class CameraDevice:
         # Parse GPS timing information from the raw row-major buffer before
         # we reshape/transpose for ASCOM convention — the GPS struct lives in
         # the first pixels of the buffer and depends on native byte order.
-        try:
-            gps = QHY_GPS.from_address(addressof(data))
-            vsync_status = gps.create_status(gps.NowFlag)
-            if vsync_status in ["LOCKED", "LOCKING"] and has_precise_info:
-                end_seconds = (
-                    gps.NowSeconds
-                    + readout_offset_us_val / 1e6
-                    + line_period_ns.value / 1e9 * 2 * (roi_sy.value // 2)
-                )
-                start_time = gps.create_timestamp(
-                    end_seconds - actual_exposure_us.value / 1e6, gps.NowCounts
-                )
-                end_time = gps.create_timestamp(end_seconds, gps.NowCounts)
-                self._timing["DATE-OBS"] = start_time
-                self._last_exposure_start_time = start_time
-                self._timing["DATE-END"] = end_time
-                self._last_exposure_duration = (
-                    Time(end_time, format="isot") - Time(start_time, format="isot")
-                ).to_value("sec")
-                self._timing["TIME-SRC"] = "GPS"
-                self._timing["GPS-SEQN"] = gps.SequenceNumber
-                self._timing["GPS-LAT"] = gps.Latitude
-                self._timing["GPS-LON"] = gps.Longitude
-                logger.debug(
-                    f"GPS timing: start={start_time}, end={end_time}, status={vsync_status}"
-                )
-            else:
-                if vsync_status not in ["LOCKED", "LOCKING"]:
-                    logger.warning(f"GPS is {vsync_status}, using system clock")
-                else:
-                    logger.warning(
-                        "GPS locked but no precise exposure info, using system clock"
-                    )
-                self._use_system_clock_timing()
-        except Exception as e:
-            logger.warning(f"GPS parsing failed: {e}, using system clock")
+        #
+        # Only trust it on cameras with a real GPS receiver. On non-GPS cameras
+        # the "struct" is image data, and NowFlag can decode to LOCKED/LOCKING
+        # by chance while NowSeconds feeds the JD-2450000.5 epoch to produce a
+        # 1990s DATE-OBS. When has_gps is False we keep the system-clock time
+        # already recorded in start_exposure and skip parsing entirely.
+        if not self._config.defaults.has_gps:
             self._use_system_clock_timing()
+        else:
+            try:
+                gps = QHY_GPS.from_address(addressof(data))
+                vsync_status = gps.create_status(gps.NowFlag)
+                if vsync_status in ["LOCKED", "LOCKING"] and has_precise_info:
+                    end_seconds = (
+                        gps.NowSeconds
+                        + readout_offset_us_val / 1e6
+                        + line_period_ns.value / 1e9 * 2 * (roi_sy.value // 2)
+                    )
+                    start_time = gps.create_timestamp(
+                        end_seconds - actual_exposure_us.value / 1e6, gps.NowCounts
+                    )
+                    end_time = gps.create_timestamp(end_seconds, gps.NowCounts)
+
+                    # Sanity window: a valid GPS fix must agree with the system
+                    # clock to within gps_max_clock_skew_s. This rejects a
+                    # misparsed header (e.g. the 1990s-epoch failure mode) even
+                    # if it slips past the LOCKED check.
+                    skew_s = abs((Time(start_time, format="isot") - Time.now()).to_value("sec"))
+                    max_skew = self._config.defaults.gps_max_clock_skew_s
+                    if skew_s > max_skew:
+                        logger.warning(
+                            f"GPS start time {start_time} differs from system clock by "
+                            f"{skew_s:.1f}s (> {max_skew:.0f}s); rejecting GPS, using system clock"
+                        )
+                        self._use_system_clock_timing()
+                    else:
+                        self._timing["DATE-OBS"] = start_time
+                        self._last_exposure_start_time = start_time
+                        self._timing["DATE-END"] = end_time
+                        self._last_exposure_duration = (
+                            Time(end_time, format="isot") - Time(start_time, format="isot")
+                        ).to_value("sec")
+                        self._timing["TIME-SRC"] = "GPS"
+                        self._timing["GPS-SEQN"] = gps.SequenceNumber
+                        self._timing["GPS-LAT"] = gps.Latitude
+                        self._timing["GPS-LON"] = gps.Longitude
+                        logger.debug(
+                            f"GPS timing: start={start_time}, end={end_time}, status={vsync_status}"
+                        )
+                else:
+                    if vsync_status not in ["LOCKED", "LOCKING"]:
+                        logger.warning(f"GPS is {vsync_status}, using system clock")
+                    else:
+                        logger.warning(
+                            "GPS locked but no precise exposure info, using system clock"
+                        )
+                    self._use_system_clock_timing()
+            except Exception as e:
+                logger.warning(f"GPS parsing failed: {e}, using system clock")
+                self._use_system_clock_timing()
 
         # Build the ASCOM-shaped image: native buffer is row-major (H, W);
         # ASCOM ImageArray indexes as [x, y] so we transpose to (W, H).

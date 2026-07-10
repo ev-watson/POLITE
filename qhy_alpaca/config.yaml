@@ -15,3 +15,5 @@ devices:
       gain: 0
       offset: 0
       usb_traffic: 10
+      # Set True only if this camera has a QHYCCD GPS receiver module.
+      has_gps: false

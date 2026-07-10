@@ -14,6 +14,7 @@ from .block_log import BlockLogger, moon_separation_deg, pwi4_snapshot
 from .horizons import cache_ephemeris, fetch_ephemeris, resolve_target_id
 from .imaging import CaptureRequest, capture_fits_file, select_filter, select_hwp_angle
 from .mount import slew_altaz, slew_radec_j2000, wait_for_slew
+from .night_display import NightReporter, total_frame_count
 from .pol_config import polconfig_snapshot, write_pol_config_sidecar
 from .qa_gates import QAGate, dispatch_qa_gate, gates_after_cal, gates_after_target
 from .session_context import SessionCaptureContext
@@ -351,6 +352,17 @@ def _apply_session_camera(session, ctx: SessionCaptureContext) -> None:
         logger.warning("Could not set cooler setpoint", exc_info=True)
 
 
+def plan_total_frames(config: "NightSessionConfig") -> int:
+    """Total individual exposures the night will capture, respecting cal stage."""
+    stage = config.calibration_stage
+    total = sum(total_frame_count(t.frames) for t in config.targets)
+    if config.calibration_before and stage in ("before", "both"):
+        total += total_frame_count(config.calibration_before)
+    if config.calibration_after and stage in ("after", "both"):
+        total += total_frame_count(config.calibration_after)
+    return total
+
+
 def _run_frames(
     session,
     pwi4,
@@ -363,6 +375,7 @@ def _run_frames(
     date_str: Optional[str] = None,
     block_log: Optional[list] = None,
     block_id: Optional[str] = None,
+    reporter: Optional[NightReporter] = None,
 ) -> None:
     ctx = config.capture_context
     for plan in frames:
@@ -450,6 +463,11 @@ def _run_frames(
             try:
                 capture_fits_file(session, request, header, out_path)
                 logger.info("Saved %s", out_path)
+                if reporter is not None:
+                    reporter.frame_captured(
+                        frame_type, filt=filter_name, hwp=achieved_hwp,
+                        exp=plan.exposure_s, idx=idx, count=plan.count,
+                    )
             except Exception:
                 logger.exception("Capture failed for %s", out_path)
                 if config.stop_on_error:
@@ -529,11 +547,14 @@ def _run_cal_frames(
     block_logger: Optional[BlockLogger],
     block_log: list,
     label: str,
+    reporter: Optional[NightReporter] = None,
 ) -> None:
     if not frames:
         return
     cal_dir = session_dir / "calibrations" if config.naming == "legacy" else session_dir
     logger.info("Running calibration frames (%s)", label)
+    if reporter is not None:
+        reporter.start_block(f"calibration ({label})", subtitle=f"{total_frame_count(frames)} frames")
     bricks = sorted({f.source_brick for f in frames if f.source_brick})
     extra = {"stage": label, "bricks": bricks}
     if block_logger:
@@ -541,13 +562,13 @@ def _run_cal_frames(
             _run_frames(
                 state.imaging, state.pwi4, frames, cal_dir, None, config,
                 ntp_status=state.ntp_status, date_str=polite_date,
-                block_log=block_log, block_id=f"cal_{label}",
+                block_log=block_log, block_id=f"cal_{label}", reporter=reporter,
             )
     else:
         _run_frames(
             state.imaging, state.pwi4, frames, cal_dir, None, config,
             ntp_status=state.ntp_status, date_str=polite_date,
-            block_log=block_log, block_id=f"cal_{label}",
+            block_log=block_log, block_id=f"cal_{label}", reporter=reporter,
         )
     for brick in bricks:
         for gate in gates_after_cal(config.qa_gates, brick):
@@ -630,93 +651,112 @@ def run_night_session(config: NightSessionConfig) -> None:
         )
 
     stage = config.calibration_stage
-    if config.calibration_before and stage in ("before", "both"):
-        _run_cal_frames(
-            state, config, config.calibration_before, session_dir, polite_date,
-            block_logger, block_log, "before",
-        )
+    total_frames = plan_total_frames(config)
+    reporter = NightReporter(total_frames, title=config.session_name or session_id)
+    with reporter:
+        reporter.banner([
+            ("session", session_id),
+            ("data dir", session_dir),
+            ("targets", ", ".join(t.name for t in config.targets) or "(none)"),
+            ("cal stage", stage),
+            ("total frames", total_frames),
+        ])
+        if config.calibration_before and stage in ("before", "both"):
+            _run_cal_frames(
+                state, config, config.calibration_before, session_dir, polite_date,
+                block_logger, block_log, "before", reporter=reporter,
+            )
+            if config.capture_context is not None:
+                _flush_pol_config_sidecar(
+                    session_dir,
+                    config.capture_context,
+                    session_id=config.session_name or session_id,
+                    block_log=block_log,
+                )
+
+        for target in config.targets:
+            logger.info("Target: %s", target.name)
+            target = _maybe_update_asteroid_ephemeris(
+                target, config.catalog.get(target.name), horizons_cache,
+            )
+
+            snap = pwi4_snapshot(state.pwi4)
+            moon_sep = None
+            if target.ra_hours is not None and target.dec_deg is not None:
+                moon_sep = moon_separation_deg(target.ra_hours, target.dec_deg)
+
+            if config.naming == "polite":
+                target_dir = session_dir
+            else:
+                target_dir = session_dir / "targets" / _slugify(target.name)
+
+            reporter.start_block(
+                target.name,
+                subtitle=f"{total_frame_count(target.frames)} frames"
+                + (f"  moon {moon_sep:.0f}°" if moon_sep is not None else ""),
+            )
+            block_extra = {**snap, "moon_sep_deg": moon_sep}
+            with block_logger.block(
+                _slugify(target.name),
+                target=target.name,
+                extra=block_extra,
+            ):
+                _slew_to_target(state.pwi4, target, limits=state.slew_limits)
+                if not target.frames:
+                    logger.warning("No frames defined for target %s", target.name)
+                _run_frames(
+                    state.imaging,
+                    state.pwi4,
+                    target.frames,
+                    target_dir,
+                    target,
+                    config,
+                    ntp_status=state.ntp_status,
+                    date_str=polite_date,
+                    block_log=block_log,
+                    block_id=_slugify(target.name),
+                    reporter=reporter,
+                )
+
+            if config.capture_context is not None:
+                _flush_pol_config_sidecar(
+                    session_dir,
+                    config.capture_context,
+                    session_id=config.session_name or session_id,
+                    block_log=block_log,
+                )
+
+            for gate in gates_after_target(config.qa_gates, target.name):
+                result = dispatch_qa_gate(gate, session_dir=session_dir, target_name=target.name)
+                reporter.qa(result)
+
+        if config.calibration_after and stage in ("after", "both"):
+            _run_cal_frames(
+                state, config, config.calibration_after, session_dir, polite_date,
+                block_logger, block_log, "after", reporter=reporter,
+            )
+            if config.capture_context is not None:
+                _flush_pol_config_sidecar(
+                    session_dir,
+                    config.capture_context,
+                    session_id=config.session_name or session_id,
+                    block_log=block_log,
+                )
+
+        for gate in config.qa_gates:
+            if gate.handler == "sequence_audit" and not gate.after_target and not gate.after_cal:
+                result = dispatch_qa_gate(gate, session_dir=session_dir)
+                reporter.qa(result)
+
         if config.capture_context is not None:
             _flush_pol_config_sidecar(
                 session_dir,
                 config.capture_context,
                 session_id=config.session_name or session_id,
                 block_log=block_log,
+                final=True,
             )
 
-    for target in config.targets:
-        logger.info("Target: %s", target.name)
-        target = _maybe_update_asteroid_ephemeris(
-            target, config.catalog.get(target.name), horizons_cache,
-        )
-
-        snap = pwi4_snapshot(state.pwi4)
-        moon_sep = None
-        if target.ra_hours is not None and target.dec_deg is not None:
-            moon_sep = moon_separation_deg(target.ra_hours, target.dec_deg)
-
-        if config.naming == "polite":
-            target_dir = session_dir
-        else:
-            target_dir = session_dir / "targets" / _slugify(target.name)
-
-        block_extra = {**snap, "moon_sep_deg": moon_sep}
-        with block_logger.block(
-            _slugify(target.name),
-            target=target.name,
-            extra=block_extra,
-        ):
-            _slew_to_target(state.pwi4, target, limits=state.slew_limits)
-            if not target.frames:
-                logger.warning("No frames defined for target %s", target.name)
-            _run_frames(
-                state.imaging,
-                state.pwi4,
-                target.frames,
-                target_dir,
-                target,
-                config,
-                ntp_status=state.ntp_status,
-                date_str=polite_date,
-                block_log=block_log,
-                block_id=_slugify(target.name),
-            )
-
-        if config.capture_context is not None:
-            _flush_pol_config_sidecar(
-                session_dir,
-                config.capture_context,
-                session_id=config.session_name or session_id,
-                block_log=block_log,
-            )
-
-        for gate in gates_after_target(config.qa_gates, target.name):
-            dispatch_qa_gate(gate, session_dir=session_dir, target_name=target.name)
-
-    if config.calibration_after and stage in ("after", "both"):
-        _run_cal_frames(
-            state, config, config.calibration_after, session_dir, polite_date,
-            block_logger, block_log, "after",
-        )
-        if config.capture_context is not None:
-            _flush_pol_config_sidecar(
-                session_dir,
-                config.capture_context,
-                session_id=config.session_name or session_id,
-                block_log=block_log,
-            )
-
-    for gate in config.qa_gates:
-        if gate.handler == "sequence_audit" and not gate.after_target and not gate.after_cal:
-            dispatch_qa_gate(gate, session_dir=session_dir)
-
-    if config.capture_context is not None:
-        _flush_pol_config_sidecar(
-            session_dir,
-            config.capture_context,
-            session_id=config.session_name or session_id,
-            block_log=block_log,
-            final=True,
-        )
-
+        reporter.note("✓ Night session complete", style="moss")
     logger.info("Night session complete")
     state.imaging.close()

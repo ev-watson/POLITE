@@ -8,7 +8,7 @@
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $VenvPy = Join-Path $Root ".venv\Scripts\python.exe"
-$Req = Join-Path $Root "third_party\alpaca-qhyccd-camera\requirements.txt"
+$Req = Join-Path $Root "qhy_alpaca\requirements.txt"
 
 if (Test-Path $VenvPy) {
     $Python = $VenvPy
@@ -19,7 +19,7 @@ if (Test-Path $VenvPy) {
 }
 
 if (-not (Test-Path $Req)) {
-    Write-Error "Missing $Req — git pull the latest POLITE repo."
+    Write-Error "Missing $Req ï¿½ git pull the latest POLITE repo."
 }
 
 Write-Host "Installing QHY Alpaca server dependencies into:"

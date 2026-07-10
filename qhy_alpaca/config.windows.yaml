@@ -19,3 +19,6 @@ devices:
       gain: 0
       offset: 30
       usb_traffic: 10.0
+      # QHY268M has no GPS receiver module — keep False so DATE-OBS uses the
+      # system clock (NTP-synced) instead of a misparsed 1990s GPS header.
+      has_gps: false

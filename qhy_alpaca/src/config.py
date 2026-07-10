@@ -46,6 +46,15 @@ class DeviceDefaults(BaseModel):
     gain: int = Field(default=0)
     offset: int = Field(default=0)
     usb_traffic: float = Field(default=10.0)
+    # GPS timestamping. Only cameras with the QHYCCD GPS receiver module
+    # (e.g. QHY174-GPS) produce a valid GPS header. On non-GPS cameras such as
+    # the QHY268M the "GPS struct" is just the first image pixels, which can be
+    # misparsed as a LOCKED fix and yield a bogus DATE-OBS near JD 2450000.5
+    # (1995-10-09). Leave this False unless a real GPS receiver is installed.
+    has_gps: bool = Field(default=False)
+    # Reject a GPS-derived timestamp that disagrees with the system clock by
+    # more than this many seconds (defense-in-depth against a misparsed header).
+    gps_max_clock_skew_s: float = Field(default=60.0)
 
 
 class DeviceConfig(BaseModel):

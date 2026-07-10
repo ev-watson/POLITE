@@ -8,10 +8,10 @@
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-$Inner = Join-Path $Root "third_party\alpaca-qhyccd-camera\scripts\start_qhy_alpaca_server.ps1"
+$Inner = Join-Path $Root "qhy_alpaca\scripts\start_qhy_alpaca_server.ps1"
 
 if (-not (Test-Path $Inner)) {
-    Write-Error "Missing $Inner — git pull the latest POLITE repo."
+    Write-Error "Missing $Inner ï¿½ git pull the latest POLITE repo."
 }
 
 & $Inner
