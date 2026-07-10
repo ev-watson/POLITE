@@ -14,7 +14,10 @@ from .timing import FilterWheelState
 
 @dataclass
 class ImagingSession:
-    camera: CameraDevice
+    # Optional so an interactive session can be brought up one device at a time
+    # (see obs_utils.interactive): a filter-wheel-only or rotator-only bring-up
+    # is valid, and capture helpers simply require the camera to be present.
+    camera: Optional[CameraDevice] = None
     guide_camera: Optional[CameraDevice] = None
     filter_wheel: Optional[FilterWheel] = None
     filter_names: Optional[List[str]] = None

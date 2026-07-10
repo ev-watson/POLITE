@@ -45,16 +45,23 @@ catalog:
   "Juno":        {ra: 20.38, dec: -3.80, horizons_id: "3"}
 
 plan:
+  # ===== CORE: the minimum-success dataset. Get this before anything else. =====
   - cal: [bias25]
-  - {target: TwilightFlat, alt: 45, az: 118, track: false, lay: [twilightFlatV]}
-  - "gamma Boo":     [polV8_03s]
-  - "HD 154892":     [polV8, polR8]
-  - "HD 154445":     [polV8_3s, polR8_3s]
-  - "HD 161056":     [polV8_3s]
-  - "BD+32 3739":    [polV8]
-  - "Melpomene":     [polV16]
-  - "Hiltner 960":   [polV16_45s]
-  - "Juno":          [polV16]
-  - "HD 204827":     [polV8, polR8]
+  - {target: TwilightFlat, alt: 45, az: 118, track: false, lay: [twilightFlatV]}  # V flats only
+  - "gamma Boo":     [polV8_03s]     # focus + confirm BOTH Savart beams before science
+  - "HD 154892":     [polV8]         # unpolarized standard (expect low P)
+  - "HD 154445":     [polV8_3s]      # polarized standard (ref P=3.67%, PA=88.6 deg)
+  #   first_light_qa fires here (see qa_gates). Reduce and confirm BEFORE rotating.
+  #   >>> MANUAL: rotate PWI4 field rotator +45 deg, recenter target, then run the repeat: <<<
+  - {target: "HD 154445", lay: [{polV8_3s: {pol_seq_id: "HD154445_polV8_rot45"}}]}  # coord-transform check
+  - cal: [darks30, darks_short]      # matching darks -> core dataset is now self-contained
+
+  # ===== OPTIONAL: only if the sky holds and time remains, in priority order. =====
+  # Never stop collecting to debug; skip freely if clouds come in.
+  - "HD 161056":     [polV8_3s]      # 2nd polarized standard
+  - "BD+32 3739":    [polV8]         # 2nd unpolarized standard
+  - "HD 204827":     [polV8, polR8]  # adds R-band
   - "HD 212311":     [polV8]
-  - cal: [darks30, darks_short]
+  - "Melpomene":     [polV16]        # asteroids
+  - "Juno":          [polV16]
+  - "Hiltner 960":   [polV16_45s]

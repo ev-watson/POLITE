@@ -58,11 +58,13 @@ class AlpacaConfig:
     # ZWO 5-slot EFW labels; must match the poltools FilterConfig / FITS FILTER
     # keyword (see poltools.default_efw_filters).
     filter_names: List[str] = field(
+        # Order matches the physical EFW carousel (0-indexed Position):
+        # 0=Clear(slot1) 1=B(slot2) 2=V(slot3) 3=R(slot4) 4=Dark(slot5).
         default_factory=lambda: [
+            "Clear",
             "Photometric B",
             "Photometric V",
             "Photometric R",
-            "Clear",
             "Dark",
         ]
     )

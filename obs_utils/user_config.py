@@ -36,11 +36,14 @@ ALPACA_CONFIG = AlpacaConfig(
     guide_camera_index=None,   # QHY268M has no internal guide chip
     filterwheel_index=0,  # ASCOM Remote: FilterWheel 0 = ASCOM.EFW2.FilterWheel
     rotator_index=0,
+    # ORDER MUST MATCH the physical EFW carousel (0-indexed software Position):
+    #   pos 0 = slot 1 = Clear, pos 1 = slot 2 = B, pos 2 = slot 3 = V,
+    #   pos 3 = slot 4 = R, pos 4 = slot 5 = Dark  (verified installed 2026-07-10).
     filter_names=[
+        "Clear",
         "Photometric B",
         "Photometric V",
         "Photometric R",
-        "Clear",
         "Dark",
     ],
 )

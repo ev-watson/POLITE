@@ -1,0 +1,81 @@
+# SALVAGE night plan - 2026-07-09 (Julian) - NO TELESCOPE POINTING
+# DEC drive is dead; engaging DEC auto-disconnects the mount. This plan NEVER
+# slews: bias/darks/flats need no pointing, and the science targets are
+# coordinate-less ("in the current field"), so the runner captures at whatever
+# fixed pointing the tube is stuck at. See salvage_no_pointing_checklist.(md|pdf).
+#
+# >>> HOW TO RUN (dead DEC: NEVER use plan_night.py --run) <<<
+# plan_night.py --run calls startup_observatory() -> enable_motors()+home_mount(),
+# which engages DEC and auto-disconnects the mount before any frame. Instead use
+# the NO-MOUNT salvage runner, which connects only camera+EFW+HWP:
+#   scripts/run_salvage_night.py night_plans/20260709_salvage.yaml            # dry-run preview
+#   scripts/run_salvage_night.py night_plans/20260709_salvage.yaml --run      # execute
+# It fail-closes if the ASCOM Remote EFW driver's filter Names don't match the
+# installed carousel (Clear,B,V,R,Dark) and pauses for the manual +45deg
+# whole-polarimeter rotation. plan_night.py stays valid ONLY as a dry-run check.
+#
+# Goal is QUALITATIVE instrument commissioning: is HWP modulation present, can the
+# beam pair be tracked frame-by-frame, does the detector-frame Stokes vector
+# transform under a whole-instrument rotation. NOT calibrated P/PA (needs a mount).
+
+uses: palette.yaml
+session: "20260709"          # data -> FITSDATA/20260709/
+observer: "POLITE"
+telescope: "CDK20"
+observatory: "Julian, CA"
+base_data_dir: FITSDATA
+naming: polite
+calibrate_stage: both        # bias before, darks after
+
+camera:
+  readout_mode: 0
+  readout_mode_name: "Mode 0"
+  gain: 0
+  offset: 30
+  egain_e_per_adu: 1.0
+  ron_e: 3.5
+  cooler_setpoint_c: -20.0
+  pixel_size_um: 3.76
+  plate_scale_arcsec: 0.224
+
+# Salvage-only bricks (self-contained; not added to the shared palette).
+bricks:
+  # Drift-through polarimetry. exp MUST be tuned to the in-field pair's declination:
+  # drift rate = 15*cos(dec) arcsec/s / 0.224 arcsec/px  (~67 px/s near the equator).
+  # Keep the per-frame trail under ~2 px. 0.05 s is a starting point for a near-
+  # equatorial pair with NO RA hold; lengthen if RA holds the field, shorten if it trails.
+  polV8_drift: {type: pol_seq, filter: "Photometric V", angles: 8, exp: 0.05, n: 2}
+  # Matched darks for the drift exposure. If you change polV8_drift exp, change this to match.
+  darks_drift:
+    type: cal_multi
+    frames:
+      - {frame: DARK, exp: 0.05, n: 15}
+
+qa_gates:
+  - after_cal: bias25
+    handler: bias_qa
+    args: {abort_on_fail: false}   # detector sanity still valid without a mount
+  - handler: sequence_audit
+    args: {}                       # HWP angle-set completeness per POLSEQ
+  # NOTE: first_light_qa is intentionally omitted - it compares to catalog P/PA,
+  # which is meaningless for uncalibrated drift frames with no known target.
+
+plan:
+  # --- bias first (no pointing) ---
+  - cal: [bias25]
+
+  # --- V flats through the full train, fixed pointing, no slew ---
+  # (twilightFlatV: 4 HWP angles x 10 FLAT frames; sky flat at the stuck pointing
+  #  or a dome/flat-panel screen. Drift averages out stars.)
+  - {target: "V flats (fixed pointing)", track: false, lay: [twilightFlatV]}
+
+  # --- drift polarimetry on the brightest isolated pair currently in the field ---
+  # Coordinate-less targets => runner takes frames at the current pointing, no slew.
+  - {target: "Drift pair A",        track: false, lay: [{polV8_drift: {pol_seq_id: "driftA_polV8"}}]}
+  - {target: "Drift pair A rep2",   track: false, lay: [{polV8_drift: {pol_seq_id: "driftA_polV8_rep2"}}]}
+  #   >>> MANUAL: rotate the WHOLE polarimeter (field rotator) +45 deg, confirm both
+  #       beams still on the detector, then run the rotated repeat below. <<<
+  - {target: "Drift pair A +45rot", track: false, lay: [{polV8_drift: {pol_seq_id: "driftA_polV8_rot45"}}]}
+
+  # --- darks after: matched to every exposure used (drift 0.05 s; flats 2 s; + 0.2/2/5 s) ---
+  - cal: [darks_drift, darks_short]

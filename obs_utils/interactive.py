@@ -403,6 +403,109 @@ def connect(
     return session
 
 
+# --------------------------------------------------------------------------- #
+# Per-component connect (fault-isolated)
+# --------------------------------------------------------------------------- #
+# ``connect()`` brings up the whole Alpaca instrument in one call: if the camera
+# is offline you get nothing, even when the wheel and rotator are fine. The
+# helpers below connect exactly one device each and attach it to the shared
+# singleton session, so an outage in one component never blocks the others.
+# Each raises on its own failure -- run one per notebook cell and a failure is
+# naturally isolated to that cell while the already-connected devices keep
+# working. All are idempotent with ``reuse=True``.
+def _ensure_session() -> ObservatorySession:
+    global _SESSION
+    if _SESSION is None:
+        _SESSION = ObservatorySession()
+    return _SESSION
+
+
+def _ensure_imaging(session: ObservatorySession, cfg: AlpacaConfig) -> ImagingSession:
+    if session.imaging is None:
+        session.imaging = ImagingSession()
+    if session.alpaca_config is None:
+        session.alpaca_config = cfg
+    return session.imaging
+
+
+def connect_camera(
+    *, alpaca_config: Optional[AlpacaConfig] = None, reuse: bool = True
+) -> ObservatorySession:
+    """Connect only the QHY268M camera and attach it to the session."""
+    from .alpaca import connect_camera as _connect_camera
+
+    session = _ensure_session()
+    cfg = alpaca_config or _uc.ALPACA_CONFIG
+    imaging = _ensure_imaging(session, cfg)
+    if not (reuse and imaging.camera is not None):
+        imaging.camera = _connect_camera(cfg.camera_host or cfg.host, cfg.camera_index)
+        logger.info(
+            "Camera connected on %s (device=%d)",
+            cfg.camera_host or cfg.host,
+            cfg.camera_index,
+        )
+    _SESSION = session
+    return session
+
+
+def connect_filter_wheel(
+    *, alpaca_config: Optional[AlpacaConfig] = None, reuse: bool = True
+) -> ObservatorySession:
+    """Connect only the ZWO EFW filter wheel and attach it to the session."""
+    from .alpaca import connect_filter_wheel as _connect_wheel
+
+    session = _ensure_session()
+    cfg = alpaca_config or _uc.ALPACA_CONFIG
+    if cfg.filterwheel_index is None:
+        raise RuntimeError("AlpacaConfig.filterwheel_index is None -- no wheel configured")
+    imaging = _ensure_imaging(session, cfg)
+    imaging.filter_names = imaging.filter_names or cfg.filter_names
+    if not (reuse and imaging.filter_wheel is not None):
+        imaging.filter_wheel = _connect_wheel(cfg.host, cfg.filterwheel_index)
+        logger.info("Filter wheel connected on %s (device=%d)", cfg.host, cfg.filterwheel_index)
+    _SESSION = session
+    return session
+
+
+def connect_rotator(
+    *, alpaca_config: Optional[AlpacaConfig] = None, reuse: bool = True
+) -> ObservatorySession:
+    """Connect only the Alpaca HWP rotator (observatory path) and attach it.
+
+    For the lab bench's native-serial Pyxis Gen3, use ``connect(pyxis_serial=True)``
+    instead -- the serial port is exclusive and homed through its own driver.
+    """
+    from .alpaca import connect_rotator as _connect_rotator
+
+    session = _ensure_session()
+    cfg = alpaca_config or _uc.ALPACA_CONFIG
+    if cfg.rotator_index is None:
+        raise RuntimeError(
+            "AlpacaConfig.rotator_index is None -- no Alpaca rotator configured. "
+            "For the lab serial Pyxis use connect(pyxis_serial=True)."
+        )
+    imaging = _ensure_imaging(session, cfg)
+    if not (reuse and imaging.rotator is not None):
+        imaging.rotator = _connect_rotator(cfg.host, cfg.rotator_index)
+        logger.info("Alpaca rotator connected on %s (device=%d)", cfg.host, cfg.rotator_index)
+    _SESSION = session
+    return session
+
+
+def connect_hwp_serial(
+    *, pyxis_config: Optional[PyxisSerialConfig] = None, reuse: bool = True
+) -> ObservatorySession:
+    """Connect only the native-serial Pyxis Gen3 HWP (lab bench)."""
+    return connect(alpaca=False, pyxis_serial=True, pyxis_config=pyxis_config, reuse=reuse)
+
+
+def connect_mount(
+    *, pwi4_config: Optional[Pwi4Config] = None, reuse: bool = True
+) -> ObservatorySession:
+    """Create only the PWI4 client (no mount motion, enabling, or homing)."""
+    return connect(alpaca=False, mount=True, pwi4_config=pwi4_config, reuse=reuse)
+
+
 def session() -> ObservatorySession:
     """Return the current live session, or raise if nothing is connected."""
     if _SESSION is None:

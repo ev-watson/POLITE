@@ -5,7 +5,7 @@ server:
   port: 5900
 log_level: INFO
 devices:
-  - entity: QHY600M_1
+  - entity: QHY268M_1
     device_number: 0
     serial_number: 954e9347bc645f17e
     defaults:

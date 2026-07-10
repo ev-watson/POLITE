@@ -192,7 +192,7 @@ def main() -> int:
         filter_name = names[filter_slot] if 0 <= filter_slot < len(names) else str(filter_slot)
         logger.info("[filter] -> slot %d (%s)", filter_slot, filter_name)
         landed = imaging.select_filter(session, filter_slot)
-        logger.info("[filter] landed on slot %d", landed)
+        logger.info("[filter] landed on slot %d (ready=%s)", landed.fwpos, landed.filtrdy)
 
         logger.info("[slew] waiting for mount to settle ...")
         t0 = time.time()

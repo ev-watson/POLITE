@@ -467,11 +467,16 @@ def before_observations_checklist() -> Path:
   return checklist_pdf_from_markdown(ROOT / "before_observations_checklist.md")
 
 
+def salvage_no_pointing_checklist() -> Path:
+  return checklist_pdf_from_markdown(ROOT / "salvage_no_pointing_checklist.md")
+
+
 def main() -> None:
   for path in (
     wire_cable_checklist(),
     startup_shutdown_checklist(),
     before_observations_checklist(),
+    salvage_no_pointing_checklist(),
   ):
     print(path)
 
