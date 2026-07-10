@@ -1,10 +1,10 @@
 # Before Starting Observations
 
-First light 2026-07-09. Observatory Windows PC (PWI4 :8220, ASCOM Alpaca :11111). Drive the night from night_plans/20260709.yaml into FITSDATA/20260709/. Dry-run preview: 278 frames, 3 QA gates, 1.08 h open-shutter.
+First light 2026-07-09. Observatory Windows PC (PWI4 :8220, ASCOM Alpaca :11111). Drive the night from night_plans/20260709.yaml into FITSDATA/20260709/. Dry-run preview: 270 frames, 3 QA gates, 1.01 h open-shutter.
 
 ## Already done (software / lab)
 
-- [x] Night plan YAML, palette bricks, QA hooks, polite naming (dry-run: 278 frames, 3 QA gates)
+- [x] Night plan YAML, palette bricks, QA hooks, polite naming (dry-run: 270 frames, 3 QA gates)
 - [x] FITS provenance wired: EGAIN, GAIN, READMODE, OFFSET, SET-TEMP, INSTROT, HWPANG
 - [x] pol_config.yaml sidecar + block_manifest.jsonl written by the night runner
 - [x] HWP hardware test: 8 frames in FITSDATA/hwp_test/; no pixels pinned at 0
@@ -57,12 +57,44 @@ ASCOM Platform is already installed. Confirm the rest before Alpaca bring-up.
 
 ## Sync code to Windows
 
-- [ ] Latest POLITE repo on the observatory PC (first-light code may be uncommitted on the dev box - commit/push or copy over)
+```powershell
+git pull
+.\scripts\install_qhy_alpaca_deps.ps1
+```
+
+- [ ] Latest POLITE repo on the observatory PC (`git pull`)
+- [ ] QHY Alpaca server deps installed (`scripts\install_qhy_alpaca_deps.ps1`)
 - [ ] astroquery import works (automated asteroid ephemerides), or JPL Horizons manual fallback ready
 
-## ASCOM / Alpaca bring-up
+## QHY268M SDK-direct camera (bypasses broken ASCOM QHY driver)
 
-- [ ] ASCOM Remote Server running; camera / EFW / rotator added; Alpaca reachable on :11111
+Camera on **:11112** (SDK-direct Alpaca). EFW + Pyxis stay on ASCOM Remote Server **:11111**.
+
+Close EZCAP and all QHY apps before any step below.
+
+```powershell
+.\scripts\qhy268_bringup.ps1 -Step all
+```
+
+Or step by step:
+
+| Step | Command |
+|------|---------|
+| 1 Scan | `.\scripts\scan_qhy_cameras.ps1` |
+| 2 Server | `.\scripts\start_qhy_alpaca_server.ps1` (new window, leave running) |
+| 3 Verify | `curl http://localhost:11112/management/apiversions` |
+| 4 Camera smoke | `.\scripts\qhy268_bringup.ps1 -Step smoke-camera` |
+| 5 Full smoke | `.\scripts\qhy268_bringup.ps1 -Step smoke-full` |
+| 6 Night | `.\scripts\qhy268_bringup.ps1 -Step night` |
+
+- [ ] Scan lists QHY268M (set `$env:QHYCCD_DLL` if needed)
+- [ ] Camera server responds on :11112
+- [ ] `qhy_alpaca_smoke_test.py` writes a FITS
+- [ ] `observatory_smoke_test.py` passes (needs PWI4 + Remote Server for EFW/Pyxis)
+
+## ASCOM / Alpaca bring-up (EFW + Pyxis on :11111)
+
+- [ ] ASCOM Remote Server running; **EFW + Pyxis** on Alpaca :11111 (QHY camera is on :11112)
 - [ ] PWI4 GUI running (:8220); mount homed; pointing model loaded; rotator + focuser connected
 - [ ] Pyxis HWP reachable as an Alpaca rotator; EFW initialized (V and R slots correct)
 - [ ] user_config.py device indices match the Remote Server (camera / wheel / rotator)
@@ -81,7 +113,7 @@ ASCOM Platform is already installed. Confirm the rest before Alpaca bring-up.
 ## Dry run (no hardware)
 
 - [ ] python scripts/plan_night.py night_plans/20260709.yaml
-- [ ] Review: 278 frames, 3 QA gates, camera block gain=0 offset=30 cooler=-20 C, ends with "(dry-run; pass --run to execute)"
+- [ ] Review: 270 frames, 3 QA gates, camera block gain=0 offset=30 cooler=-20 C, ends with "(dry-run; pass --run to execute)"
 - [ ] Dry run does NOT connect, slew, move HWP, expose, or run QA on FITS
 
 ## After dry run - before roof
@@ -92,8 +124,45 @@ ASCOM Platform is already installed. Confirm the rest before Alpaca bring-up.
 - [ ] Focus per filter (~20:40) - manual
 - [ ] Do NOT change gain / readout mode / offset after bias QA passes - it invalidates masters and the CMOS error model
 
-## Run the night
+## Run the night - CORE dataset (must-get)
 
 - [ ] python scripts/plan_night.py night_plans/20260709.yaml --run
-- [ ] After HD 154445: check first_light_qa (reference P=3.67%, PA=88.6 deg); do NOT continue to HD 161056 if PA fails unexplained
-- [ ] End of night: sequence_audit runs automatically (HWP angle-set completeness); confirm darks captured after science
+- [ ] gamma Boo: confirm focus AND that BOTH Savart beams are visible/paired before science
+- [ ] HD 154892 (unpolarized), then HD 154445 (polarized) - polV8 in V
+- [ ] After HD 154445: first_light_qa reduces it (reference P=3.67%, PA=88.6 deg); reduce and confirm BEFORE rotating
+- [ ] MANUAL rotator repeat: rotate PWI4 field rotator +45 deg, recenter HD 154445, run the polV8_3s repeat (POLSEQ HD154445_polV8_rot45)
+- [ ] Coord-transform check: detector-frame q,u SHOULD change; sky-frame P,PA should MATCH the first run (both near ref). Mismatch = sign / WCS / beam-label / HWP-zero / rotator-convention error - note it, keep observing
+- [ ] Matching darks (darks30 + darks_short) captured - core dataset is now self-contained
+- [ ] End of night: sequence_audit runs automatically (HWP angle-set completeness per POLSEQ)
+
+## Run the night - OPTIONAL (only if sky holds and time remains)
+
+- [ ] Priority order: HD 161056, BD+32 3739, HD 204827 (+R), HD 212311, Melpomene, Juno, Hiltner 960
+- [ ] Skip freely if high clouds come in (common after 01:00-02:00). A complete core dataset beats a half-finished long one
+- [ ] Extra time -> repeat HD 154445 / HD 154892 or take more darks/flats rather than debugging the pipeline in the dark
+
+## Minimum success (this is the bar for first light)
+
+- [ ] Detector passes bias / RON sanity check
+- [ ] V-band HWP flats acquired
+- [ ] Both Savart beams automatically detected and stay paired through the HWP sequence
+- [ ] HD 154892 reduces to low polarization
+- [ ] HD 154445 shows clear 4-theta modulation
+- [ ] lsq and double_ratio give consistent q, u
+- [ ] Rotator +45 repeat of HD 154445 gives consistent sky-frame P, PA
+- [ ] Pipeline produces q, u, P, PA and uncertainties with no manual intervention
+
+## Stretch goals (NOT required tonight; defer to next run)
+
+- [ ] Four polarized + four unpolarized standards; polarimetric efficiency; instrumental-polarization model
+- [ ] Asteroid polarimetry (Melpomene, Juno); R-band calibration; dawn characterization + PTC ladder
+- [ ] Publication-quality uncertainties
+
+## First-light field card (tape to the console)
+
+- [ ] Never stop collecting data because the reduction looks wrong - the sky is the scarce resource, not the pipeline
+- [ ] Do NOT change gain / offset / mode / HWP-zero / focus / rotator calibration mid-night unless hardware is clearly broken
+- [ ] Preserve raw FITS: never overwrite, rename, crop, or preprocess in place
+- [ ] Log one-line breadcrumbs with UT: "22:43 possible wrong beam", "target drifted", "cloud"
+- [ ] If one reduction fails, move on and keep collecting standards / darks / flats
+- [ ] Before shutdown, verify only: all FITS exist, logs saved, calibration frames (bias/flats/darks) taken

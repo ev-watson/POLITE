@@ -148,6 +148,8 @@ def startup_observatory(config: StartupConfig) -> StartupState:
         guide_camera_index=config.alpaca.guide_camera_index,
         filterwheel_index=config.alpaca.filterwheel_index,
         filter_names=config.alpaca.filter_names,
+        rotator_index=config.alpaca.rotator_index,
+        camera_host=config.alpaca.camera_host,
     )
 
     ntp_status = acquire_session_timing_snapshot(config.timing)

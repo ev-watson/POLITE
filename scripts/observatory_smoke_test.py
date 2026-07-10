@@ -65,7 +65,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--pwi4-host", default=PWI4_CONFIG.host, help="PWI4 host (default: config)")
     p.add_argument("--pwi4-port", type=int, default=PWI4_CONFIG.port, help="PWI4 port (default: 8220)")
     p.add_argument("--alpaca-host", default=ALPACA_CONFIG.host,
-                   help="Alpaca host:port of the ASCOM Remote Server (default: config)")
+                   help="Alpaca host:port for EFW + rotator (ASCOM Remote Server)")
+    p.add_argument("--camera-host", default=ALPACA_CONFIG.camera_host,
+                   help="Alpaca host:port for QHY camera (SDK-direct server; default from config)")
     p.add_argument("--camera-index", type=int, default=ALPACA_CONFIG.camera_index,
                    help="Alpaca Camera # (QHY268M)")
     p.add_argument("--filterwheel-index", type=int,
@@ -159,12 +161,19 @@ def main() -> int:
         cfg = dataclasses.replace(
             ALPACA_CONFIG,
             host=args.alpaca_host,
+            camera_host=args.camera_host,
             camera_index=args.camera_index,
             filterwheel_index=args.filterwheel_index,
             rotator_index=args.rotator_index,
         )
-        logger.info("[alpaca] opening session on %s (cam=%d, efw=%d, rot=%d)",
-                    cfg.host, cfg.camera_index, cfg.filterwheel_index, cfg.rotator_index)
+        logger.info(
+            "[alpaca] camera=%s#%d  aux=%s (efw=%d, rot=%d)",
+            cfg.camera_host or cfg.host,
+            cfg.camera_index,
+            cfg.host,
+            cfg.filterwheel_index,
+            cfg.rotator_index,
+        )
         session = imaging.open_session(cfg)
 
         # --- 3. Slew near zenith (non-blocking) + overlap HWP/filter ------

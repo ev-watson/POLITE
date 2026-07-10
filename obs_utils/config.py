@@ -35,17 +35,19 @@ class PyxisSerialConfig:
 
 @dataclass
 class AlpacaConfig:
-    """Alpaca device mapping for the INDIGO ``indigo_agent_alpaca`` bridge.
+    """Alpaca device mapping.
 
-    On the lab Mac / observatory, INDIGO exposes the QHY268M, ZWO EFW, and Optec
-    Pyxis (HWP stage) as ASCOM Alpaca devices on one endpoint (default :11111).
-    Confirm the assigned device numbers in the INDIGO Control Panel
-    (``AGENT_ALPACA_DEVICES``) during bring-up. The PlaneWave mount + field
-    rotator stay on PWI4 and are not represented here.
+    On the lab Mac, INDIGO exposes camera + EFW + rotator on one endpoint
+    (default ``:11111``). On the observatory Windows PC the QHY268M may use a
+    separate SDK-direct Alpaca server (``camera_host``, default ``:11112``)
+    while the ZWO EFW and Optec Pyxis stay on ASCOM Remote Server (``host``,
+    default ``:11111``).
     """
 
     host: str = "localhost:11111"
-    camera_index: int = 0  # Alpaca Camera # for the QHY268M (indigo_ccd_qhy2)
+    # When set, the main camera uses this endpoint instead of ``host``.
+    camera_host: Optional[str] = None
+    camera_index: int = 0
     # QHY268M is a single mono CMOS with no internal guide chip; leave None
     # unless a separate guide camera is wired as its own INDIGO/Alpaca device.
     guide_camera_index: Optional[int] = None

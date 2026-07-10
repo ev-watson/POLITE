@@ -39,6 +39,7 @@ def open_session(config: AlpacaConfig) -> ImagingSession:
         filterwheel_index=config.filterwheel_index,
         filter_names=config.filter_names,
         rotator_index=config.rotator_index,
+        camera_host=config.camera_host,
     )
 
 

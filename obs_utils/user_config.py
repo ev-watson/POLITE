@@ -2,16 +2,14 @@ from __future__ import annotations
 
 """User-editable observatory configuration.
 
-Update device numbers here to match the INDIGO ``indigo_agent_alpaca`` mapping
-(check the INDIGO Control Panel ``AGENT_ALPACA_DEVICES`` during bring-up):
-- QHY268M main camera        (indigo_ccd_qhy2       -> Alpaca Camera)
-- ZWO EFW 5-slot filter wheel (indigo_wheel_asi      -> Alpaca FilterWheel)
-- Optec Pyxis 2" HWP stage   (indigo_rotator_optec  -> Alpaca Rotator)
+Observatory Windows (production):
+- QHY268M camera        SDK-direct Alpaca server  (camera_host :11112, device 0)
+- ZWO EFW filter wheel  ASCOM Remote Server       (host :11111)
+- Optec Pyxis HWP       ASCOM Remote Server       (host :11111)
 
-The PlaneWave mount + field rotator stay on PWI4 (not INDIGO). The Optec Pyxis
-Gen3 HWP rotator is driven natively over serial (see PYXIS_CONFIG below), not
-through INDIGO -- its Gen3 controller protocol is incompatible with INDIGO's
-legacy indigo_rotator_optec driver.
+Lab Mac (INDIGO):
+- All three on INDIGO ``indigo_agent_alpaca`` at ``localhost:11111``; leave
+  ``camera_host=None``.
 """
 
 from .config import AlpacaConfig, Pwi4Config, PyxisSerialConfig
@@ -33,10 +31,11 @@ PYXIS_CONFIG = PyxisSerialConfig(
 
 ALPACA_CONFIG = AlpacaConfig(
     host="localhost:11111",
-    camera_index=2,
+    camera_host="localhost:11112",  # ryanswindle SDK-direct server; None on lab Mac
+    camera_index=0,
     guide_camera_index=None,   # QHY268M has no internal guide chip
     filterwheel_index=1,
-    rotator_index=0,        # set to the Pyxis Alpaca # to enable HWP control
+    rotator_index=0,
     filter_names=[
         "Photometric B",
         "Photometric V",

@@ -1,0 +1,21 @@
+# POLITE observatory Windows profile - QHY268M via qhyccd.dll (bypasses ASCOM COM).
+# ASCOM Remote Server stays on :11111 for ZWO EFW + Optec Pyxis; this server owns the camera.
+entity: polite_qhy268m
+# Leave blank to auto-discover qhyccd.dll under Program Files\QHYCCD, or set QHYCCD_DLL.
+library: ""
+server:
+  host: 0.0.0.0
+  port: 11112
+log_level: INFO
+devices:
+  - entity: QHY268M
+    device_number: 0
+    # Optional: paste the serial fragment from scan_qhy_cameras.py (e.g. bc645f17e)
+    serial_number: ""
+    defaults:
+      temperature: -20.0
+      readout_mode: 0
+      binning: 1
+      gain: 0
+      offset: 30
+      usb_traffic: 10.0

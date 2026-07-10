@@ -14,8 +14,27 @@ Device split:
   `pyxis_gen3_test.py` (below) before wiring into night plans.
 - **PWI4** (`:8220`): PlaneWave mount + field rotator (`INSTROT`).
 
-Run everything under the project env:
-`/Users/blu3/miniforge3/envs/POLITE/bin/python`.
+## Observatory Windows — QHY268M SDK-direct bring-up
+
+When the QHY ASCOM driver fails but EZCAP works, the camera uses a separate
+SDK-direct Alpaca server on **:11112** (`third_party/alpaca-qhyccd-camera`).
+EFW + Pyxis stay on ASCOM Remote Server **:11111**.
+
+```powershell
+git pull
+.\scripts\install_qhy_alpaca_deps.ps1    # once
+.\scripts\qhy268_bringup.ps1 -Step all
+```
+
+| Script | Step |
+|--------|------|
+| `scan_qhy_cameras.ps1` | SDK scan (close EZCAP first) |
+| `start_qhy_alpaca_server.ps1` | Camera Alpaca server :11112 |
+| `qhy_alpaca_smoke_test.py` | Camera-only FITS capture |
+| `observatory_smoke_test.py` | Mount + HWP + EFW + camera |
+| `qhy268_bringup.ps1` | Guided wrapper for all steps |
+
+See `before_observations_checklist.md` for the full first-light checklist.
 
 ## Lab bring-up / testing pipeline
 

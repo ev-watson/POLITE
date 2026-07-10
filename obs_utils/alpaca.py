@@ -83,14 +83,16 @@ def open_imaging_session(
     filterwheel_index: Optional[int] = None,
     filter_names: Optional[List[str]] = None,
     rotator_index: Optional[int] = None,
+    camera_host: Optional[str] = None,
 ) -> ImagingSession:
-    camera = connect_camera(host, camera_index)
+    cam_host = camera_host or host
+    camera = connect_camera(cam_host, camera_index)
     guide_camera = None
     filter_wheel = None
     rotator = None
 
     if guide_camera_index is not None:
-        guide_camera = connect_camera(host, guide_camera_index)
+        guide_camera = connect_camera(cam_host, guide_camera_index)
 
     if filterwheel_index is not None:
         filter_wheel = connect_filter_wheel(host, filterwheel_index)
