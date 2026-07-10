@@ -32,8 +32,6 @@ reference-sheets/
 tests/
 docs/
 reports/
-*.ipynb
-notebooks/
 
 # PDFs (reference materials)
 *.pdf
