@@ -4,7 +4,7 @@
 #   .\scripts\scan_qhy_cameras.ps1
 #
 # Optional DLL override:
-#   $env:QHYCCD_DLL = "C:\Program Files\QHYCCD\SDK\qhyccd.dll"
+#   $env:QHYCCD_DLL = "C:\Program Files\QHYCCD\AllInOne\sdk\x64\qhyccd.dll"
 #   .\scripts\scan_qhy_cameras.ps1
 
 $ErrorActionPreference = "Stop"

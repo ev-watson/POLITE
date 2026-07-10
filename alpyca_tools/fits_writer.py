@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union
 
 import numpy as np
 from astropy.io import fits
 
-from obs_utils.timing import FilterWheelState, TimingProvenance, stamp_timing_cards
+if TYPE_CHECKING:
+    from obs_utils.timing import FilterWheelState, TimingProvenance
 
 from .camera_device import CameraDevice
 from .camera_ops import ExposureSettings, capture_image
@@ -102,6 +103,8 @@ def build_header(
     _set_card(hdr, "DATE-OBS", str(camera.LastExposureStartTime), "Exposure start time")
     _set_card(hdr, "TIMESYS", "UTC", "Time system")
     if cfg.timing is not None:
+        from obs_utils.timing import stamp_timing_cards
+
         stamp_timing_cards(hdr, cfg.timing, cfg.filter_wheel_state)
 
     _set_card(hdr, "XBINNING", int(camera.BinX), "Binning factor in X")

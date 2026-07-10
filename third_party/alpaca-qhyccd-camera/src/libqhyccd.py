@@ -123,6 +123,8 @@ def _windows_qhyccd_candidates() -> List[Path]:
         for pattern in (
             "SDK/qhyccd.dll",
             "SDK/x64/qhyccd.dll",
+            "AllInOne/sdk/x64/qhyccd.dll",
+            "AllInOne/sdk/x86/qhyccd.dll",
             "AllCYSDK/SDK/x64/qhyccd.dll",
             "AllCYSDK/SDK/qhyccd.dll",
             "qhyccd.dll",
@@ -153,7 +155,7 @@ def resolve_qhyccd_library(library_path: Optional[str] = None) -> str:
                 return str(candidate.resolve())
         raise FileNotFoundError(
             "qhyccd.dll not found. Set QHYCCD_DLL or config.yaml library: to the "
-            "EZCAP/SDK install path (e.g. C:/Program Files/QHYCCD/SDK/qhyccd.dll)."
+            "EZCAP/SDK install path (e.g. C:/Program Files/QHYCCD/AllInOne/sdk/x64/qhyccd.dll)."
         )
 
     default = "/usr/local/lib/libqhyccd.so"

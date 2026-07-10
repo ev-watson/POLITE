@@ -38,7 +38,7 @@ def main() -> int:
         count = lib.ScanQHYCCD()
         print(f"Found {count} camera(s)")
         if not count:
-            print("No cameras — close EZCAP, replug USB, retry.")
+            print("No cameras - close EZCAP, replug USB, retry.")
             return 2
 
         for i in range(count):

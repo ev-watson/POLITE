@@ -2,9 +2,9 @@
 """Minimal POLITE camera smoke test against the SDK-direct Alpaca server.
 
 Uses localhost:11112 / camera 0 by default (config.windows.yaml). EFW and
-rotator are not exercised here — only the QHY268M capture path.
+rotator are not exercised here - only the QHY268M capture path.
 
-    python scripts/qhy_alpaca_smoke_test.py --exposure 2 --out D:/tmp/qhy_smoke.fits
+    python scripts/qhy_alpaca_smoke_test.py --exposure 2 --out logs/qhy_smoke.fits
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from alpyca_tools.fits_writer import FitsHeaderConfig, capture_fits
+from alpyca_tools.fits_writer import DetectorCards, FitsHeaderConfig, capture_fits
 from obs_utils.alpaca import connect_camera
 
 
@@ -53,15 +53,17 @@ def main() -> int:
         cam.SetCCDTemperature = -20.0
 
     header = FitsHeaderConfig(
+        imagetyp="LIGHT",
         object_name="QHY_SMOKE",
-        frame_type="Light",
         filter_name="Clear",
         instrument="QHY268M",
-        gain_setting=args.gain,
-        readout_mode=args.readout_mode,
-        offset_setting=args.offset,
-        cooler_setpoint_c=-20.0,
-        pixel_size_um=3.76,
+        detector=DetectorCards(
+            gain_setting=args.gain,
+            readout_mode=args.readout_mode,
+            offset_setting=args.offset,
+            cooler_setpoint_c=-20.0,
+            pixel_size_um=3.76,
+        ),
     )
 
     from alpyca_tools.camera_ops import ExposureSettings

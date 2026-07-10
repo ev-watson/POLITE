@@ -15,7 +15,7 @@
 param(
     [ValidateSet("all", "scan", "server", "verify-server", "smoke-camera", "smoke-full", "night")]
     [string]$Step = "all",
-    [string]$OutFits = "D:\tmp\qhy_smoke.fits",
+    [string]$OutFits = "logs\qhy_smoke.fits",
     [double]$Exposure = 2.0,
     [string]$NightPlan = "night_plans\20260709.yaml"
 )
@@ -37,7 +37,7 @@ function Step-Scan {
     & (Join-Path $Root "scripts\scan_qhy_cameras.ps1")
     if ($LASTEXITCODE -ne 0) {
         Write-Host "`nScan failed. Try:" -ForegroundColor Yellow
-        Write-Host '  $env:QHYCCD_DLL = "C:\Program Files\QHYCCD\SDK\qhyccd.dll"'
+        Write-Host '  $env:QHYCCD_DLL = "C:\Program Files\QHYCCD\AllInOne\sdk\x64\qhyccd.dll"'
         Write-Host "  .\scripts\scan_qhy_cameras.ps1"
         exit $LASTEXITCODE
     }
@@ -67,14 +67,15 @@ function Step-VerifyServer {
 function Step-SmokeCamera {
     Write-Host "`n=== Step 4: Camera-only smoke test ===" -ForegroundColor Cyan
     Require-Venv
-    $outDir = Split-Path -Parent $OutFits
+    $outFits = if ([System.IO.Path]::IsPathRooted($OutFits)) { $OutFits } else { Join-Path $Root $OutFits }
+    $outDir = Split-Path -Parent $outFits
     if ($outDir -and -not (Test-Path $outDir)) {
         New-Item -ItemType Directory -Path $outDir -Force | Out-Null
     }
     & $VenvPy (Join-Path $Root "scripts\qhy_alpaca_smoke_test.py") `
-        --exposure $Exposure --out $OutFits
+        --exposure $Exposure --out $outFits
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    Write-Host "Wrote $OutFits" -ForegroundColor Green
+    Write-Host "Wrote $outFits" -ForegroundColor Green
 }
 
 function Step-SmokeFull {
