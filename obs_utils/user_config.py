@@ -34,7 +34,7 @@ ALPACA_CONFIG = AlpacaConfig(
     camera_host="localhost:11112",  # ryanswindle SDK-direct server; None on lab Mac
     camera_index=0,
     guide_camera_index=None,   # QHY268M has no internal guide chip
-    filterwheel_index=1,
+    filterwheel_index=0,  # ASCOM Remote: FilterWheel 0 = ASCOM.EFW2.FilterWheel
     rotator_index=0,
     filter_names=[
         "Photometric B",
