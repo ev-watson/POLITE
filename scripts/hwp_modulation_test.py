@@ -15,11 +15,15 @@ Two modes:
       /Users/blu3/miniforge3/envs/POLITE/bin/python scripts/hwp_modulation_test.py
 
 * ``hardware`` -- the bench dress-rehearsal on the real lab kit. Drives the
-  Optec Pyxis (carrying the HWP) through the same angle sequence via ASCOM
-  Alpaca (INDIGO bridge), optionally selects a ZWO EFW band, and captures one
-  QHY268M frame per angle, writing FITS with the ``HWPANG`` keyword. No
-  reduction -- this verifies the acquisition + stepping loop. See
-  ``docs/lab_trial_checklist.md``.
+  Optec Pyxis Gen3 (carrying the HWP) through the same angle sequence over its
+  **native FTDI serial link** (``obs_utils.pyxis_gen3``, NOT INDIGO/Alpaca --
+  the Gen3 framed protocol is incompatible with INDIGO's legacy
+  ``indigo_rotator_optec`` driver). The ZWO EFW (optional band select) and the
+  QHY268M stay on INDIGO -> Alpaca. Captures one frame per angle, writing FITS
+  with the ``HWPANG`` keyword. No reduction -- this verifies the acquisition +
+  stepping loop. The rotator is homed first (absolute ``MOVEPA`` moves are
+  rejected on an un-homed controller); pass ``--skip-home`` if it is already
+  homed. See ``docs/lab_trial_checklist.md``.
 
 Standard HWP angle sequences (22.5 deg increments; >= 4 angles, never 2):
   4 -> {0, 22.5, 45, 67.5};  8 -> 0..157.5;  16 -> 0..337.5.
@@ -39,6 +43,24 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 logger = logging.getLogger("hwp_modulation_test")
+
+
+def _default_pyxis_port() -> str:
+    try:
+        from obs_utils.user_config import PYXIS_CONFIG
+
+        return PYXIS_CONFIG.port
+    except Exception:  # pragma: no cover - config optional
+        return "/dev/cu.usbserial-OP7XD6WD"
+
+
+def _default_pyxis_baud() -> int:
+    try:
+        from obs_utils.user_config import PYXIS_CONFIG
+
+        return PYXIS_CONFIG.baud
+    except Exception:  # pragma: no cover - config optional
+        return 19200
 
 
 # --------------------------------------------------------------------------- #
@@ -195,13 +217,18 @@ def run_sim(args: argparse.Namespace) -> int:
 # HARDWARE mode (bench dress-rehearsal)
 # --------------------------------------------------------------------------- #
 def run_hardware(args: argparse.Namespace) -> int:
-    # Lazy imports so sim mode does not require alpyca.
+    # Lazy imports so sim mode needs neither alpyca nor pyserial.
+    # Rotator: native Optec Pyxis Gen3 over FTDI serial (NOT INDIGO/Alpaca).
+    # Camera + filter wheel: still INDIGO -> Alpaca.
     from obs_utils.alpaca import (
         connect_camera,
         connect_filter_wheel,
-        connect_rotator,
-        move_rotator_absolute,
         set_filter_position,
+    )
+    from obs_utils.pyxis_gen3 import (
+        PyxisError,
+        PyxisTimeout,
+        connect_pyxis_gen3,
     )
     from alpyca_tools.camera_ops import ExposureSettings
     from alpyca_tools.fits_writer import (
@@ -215,19 +242,54 @@ def run_hardware(args: argparse.Namespace) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     logger.info("HARDWARE: %d HWP angles -> %s", len(angles), out_dir)
 
-    rot = connect_rotator(args.host, args.rotator)
-    fw = None
-    if args.filterwheel is not None:
-        fw = connect_filter_wheel(args.host, args.filterwheel)
-        landed = set_filter_position(fw, args.filter_slot)
-        logger.info("[filters] selected slot %d", landed)
-
-    cam = connect_camera(args.host, args.camera)
-    written = []
+    # --- Rotator: native Pyxis Gen3 serial link ---
+    port = args.pyxis_port or _default_pyxis_port()
+    baud = args.pyxis_baud if args.pyxis_baud is not None else _default_pyxis_baud()
+    toggle_dtr = {"default": None, "low": False, "high": True}[args.pyxis_dtr]
+    logger.info("[rotator] (serial) connecting Pyxis Gen3 on %s (baud %d, autodetect=%s)",
+                port, baud, not args.pyxis_no_autodetect)
     try:
+        rot = connect_pyxis_gen3(
+            port,
+            baud=baud,
+            autodetect=not args.pyxis_no_autodetect,
+            read_timeout_s=args.pyxis_read_timeout,
+            toggle_dtr=toggle_dtr,
+        )
+    except (ConnectionError, OSError) as exc:
+        logger.error("[rotator] (serial) connection failed: %s", exc)
+        logger.error("Check: cable plugged in (`ls /dev/cu.usbserial*`), 12 V power to "
+                     "the rotator, and that no other process holds the port.")
+        return 1
+
+    fw = None
+    cam = None
+    written: List[Path] = []
+    try:
+        logger.info("[rotator] ping nickname = %r", rot.ping())
+        status = rot.get_status()
+        logger.info("[rotator] status: Current PA=%s  Is Homed=%s  Is Moving=%s",
+                    status.get("Current PA"), status.get("Is Homed"), status.get("Is Moving"))
+
+        # Absolute MOVEPA is rejected (error 11) on an un-homed controller, so
+        # home first unless the caller asserts it is already homed.
+        if not args.skip_home:
+            logger.info("[rotator] homing (physical motion) ...")
+            homed_pa = rot.home(poll_s=args.poll, timeout_s=args.home_timeout)
+            logger.info("[rotator] homed; Current PA = %.3f deg", homed_pa)
+        elif not rot._flag(rot.get_status(), "Is Homed"):  # noqa: SLF001 - explicit safety check
+            logger.warning("[rotator] --skip-home set but rotator is NOT homed; MOVEPA "
+                           "will likely be rejected (error 11). Re-run without --skip-home.")
+
+        if args.filterwheel is not None:
+            fw = connect_filter_wheel(args.host, args.filterwheel)
+            landed = set_filter_position(fw, args.filter_slot)
+            logger.info("[filters] selected slot %d", landed)
+
+        cam = connect_camera(args.host, args.camera)
         for i, a in enumerate(angles):
             logger.info("[hwp] angle %d/%d -> %.2f deg", i + 1, len(angles), a)
-            final = move_rotator_absolute(rot, a)
+            final = rot.move_absolute(a, poll_s=args.poll, timeout_s=args.move_timeout)
             settings = ExposureSettings(
                 exposure_s=float(args.exposure),
                 is_light=not args.dark,
@@ -251,6 +313,8 @@ def run_hardware(args: argparse.Namespace) -> int:
                                 timeout_s=args.timeout)
             written.append(path)
             logger.info("[hwp]   wrote %s (rotator reports %.2f deg)", path.name, final)
+    except (PyxisError, PyxisTimeout) as exc:
+        logger.error("[rotator] FAILED: %s", exc)
     finally:
         for dev in (fw, cam):
             if dev is None:
@@ -260,11 +324,11 @@ def run_hardware(args: argparse.Namespace) -> int:
             except Exception:
                 pass
         try:
-            rot.Connected = False
+            rot.close()
         except Exception:
             pass
 
-    logger.info("HARDWARE result: wrote %d frames", len(written))
+    logger.info("HARDWARE result: wrote %d/%d frames", len(written), len(angles))
     return 0 if len(written) == len(angles) else 1
 
 
@@ -298,11 +362,30 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--double-ratio", action="store_true",
                    help="(sim) note double-ratio cross-check availability")
 
-    # hardware knobs
+    # hardware knobs -- camera + filter wheel on INDIGO -> Alpaca
     p.add_argument("--host", default="localhost:11111",
-                   help="Alpaca host:port (INDIGO alpaca agent)")
-    p.add_argument("--rotator", type=int, default=0,
-                   help="Alpaca device number of the Pyxis (HWP) rotator")
+                   help="Alpaca host:port for the camera + filter wheel (INDIGO alpaca agent)")
+
+    # Rotator: native Optec Pyxis Gen3 over FTDI serial (NOT INDIGO/Alpaca).
+    p.add_argument("--pyxis-port", default=None,
+                   help="Serial device for the Pyxis HWP rotator (default: PYXIS_CONFIG.port)")
+    p.add_argument("--pyxis-baud", type=int, default=None,
+                   help="Baud to try first (default: PYXIS_CONFIG.baud)")
+    p.add_argument("--pyxis-no-autodetect", action="store_true",
+                   help="Do not probe other baud rates if the first fails")
+    p.add_argument("--pyxis-dtr", choices=["default", "low", "high"], default="default",
+                   help="Force DTR/RTS level on serial open (default: leave pyserial default)")
+    p.add_argument("--pyxis-read-timeout", type=float, default=2.0,
+                   help="Per-command serial read timeout [s] (default 2.0)")
+    p.add_argument("--skip-home", action="store_true",
+                   help="Skip the Pyxis homing routine (only if already homed)")
+    p.add_argument("--home-timeout", type=float, default=180.0,
+                   help="Pyxis homing timeout [s] (default 180)")
+    p.add_argument("--move-timeout", type=float, default=120.0,
+                   help="Pyxis per-move timeout [s] (default 120)")
+    p.add_argument("--poll", type=float, default=0.5,
+                   help="Status poll interval [s] during home/move (default 0.5)")
+
     p.add_argument("--filterwheel", type=int,
                    help="Alpaca device number of the ZWO EFW (optional)")
     p.add_argument("--filter-slot", type=int, default=0)

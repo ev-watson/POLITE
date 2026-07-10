@@ -9,6 +9,8 @@ from alpaca.rotator import Rotator
 
 from alpyca_tools.camera_device import CameraDevice
 
+from .timing import FilterWheelState
+
 
 @dataclass
 class ImagingSession:
@@ -105,13 +107,25 @@ def open_imaging_session(
     )
 
 
+def _filter_wheel_ready(filter_wheel: FilterWheel, target: int) -> bool:
+    try:
+        if bool(filter_wheel.IsMoving):
+            return False
+    except Exception:
+        pass
+    try:
+        return int(filter_wheel.Position) == int(target)
+    except Exception:
+        return True
+
+
 def set_filter_position(
     filter_wheel: FilterWheel,
     position: Union[int, str],
     names_override: Optional[List[str]] = None,
     poll_s: float = 0.5,
     timeout_s: float = 30.0,
-) -> int:
+) -> FilterWheelState:
     if isinstance(position, str):
         names = list(filter_wheel.Names)
         if position in names:
@@ -123,11 +137,12 @@ def set_filter_position(
                 f"Filter '{position}' not in filter wheel names: {names or names_override}"
             )
 
-    filter_wheel.Position = int(position)
+    target = int(position)
+    filter_wheel.Position = target
     t0 = time.time()
     while True:
-        if filter_wheel.Position == int(position):
-            return int(position)
+        if filter_wheel.Position == target:
+            return FilterWheelState(fwpos=target, filtrdy=_filter_wheel_ready(filter_wheel, target))
         if (time.time() - t0) > timeout_s:
             raise TimeoutError("Filter wheel move timed out")
         time.sleep(poll_s)

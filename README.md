@@ -72,8 +72,11 @@ poltools/                Imaging polarimetry simulator + Stokes pipeline (v0.1.0
 
 scripts/                 Night session automation scripts
 utils.py                 General-purpose astronomy utilities
-polite.ipynb             Main analysis notebook
-reduction.ipynb          Image reduction pipeline notebook
+notebooks/               Jupyter notebooks (see notebooks/README.md)
+  lab_control.ipynb        Interactive lab-bench control (persistent kernel)
+  observatory_control.ipynb  Interactive night control (startup->shutdown)
+  polite.ipynb             Main analysis notebook
+  reduction.ipynb          Image reduction pipeline notebook
 
 FITSDATA/                Raw FITS data organized by date (YYYYMMDD)
 datafiles/               Organized calibration and science frames

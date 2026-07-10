@@ -17,19 +17,18 @@ ptc = ct.photon_transfer_curve(flat_groups, bias, config)
 
 ## Package layout
 
-| Module | Role |
+| Module | Role|
 |--------|------|
-| `_types.py` | `SensorConfig`, `AnalysisResult`, frame/cube aliases |
-| `io.py` | FITS loading, grouping, header parsing |
-| `stacking.py` | Master bias, dark, flat (chunked for memory) |
-| `stats.py` | Online mean/variance, robust scatter, gaussianity tests |
-| `noise.py` | Read noise, dark non-uniformity, fixed pattern noise, telegraph noise |
-| `dark.py` | Dark current vs exposure/temperature, warm pixels |
-| `gain.py` | Photon transfer curve, full-well capacity, noise decomposition |
-| `linearity.py` | Signal-vs-exposure linearity and fractional error |
-| `prnu.py` | Pixel sensitivity map from flat fields |
-| `plotting.py` | Diagnostic figures |
-
+| `_types.py` | `SensorConfig`, `AnalysisResult`, frame/cube aliases|
+| `io.py` | FITS loading, grouping, header parsing|
+| `stacking.py` | Master bias, dark, flat (chunked for memory)|
+| `stats.py` | Online mean/variance, robust scatter, gaussianity tests|
+| `noise.py` | Read noise, dark non-uniformity, fixed pattern noise, telegraph noise|
+| `dark.py` | Dark current vs exposure/temperature, warm pixels|
+| `gain.py` | Photon transfer curve, full-well capacity, noise decomposition|
+| `linearity.py` | Signal-vs-exposure linearity and fractional error|
+| `prnu.py` | Pixel sensitivity map from flat fields|
+| `plotting.py` | Diagnostic figures|
 ## Conventions
 
 - Detector arrays use `[row, col] == [y, x]` with origin upper-left (row 0 at the top).

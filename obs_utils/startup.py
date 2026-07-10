@@ -17,6 +17,7 @@ from .mount import (
     set_slew_time_constant,
 )
 from .pwi4_client import PWI4
+from .timing import NtpStatus, TimingConfig, acquire_session_timing_snapshot
 
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,7 @@ class StartupConfig:
     slew_limits: SlewLimits = field(default_factory=SlewLimits)
     slew_time_constant_s: Optional[float] = None
     logging: LoggingConfig = field(default_factory=LoggingConfig)
+    timing: TimingConfig = field(default_factory=TimingConfig)
 
 
 @dataclass
@@ -38,6 +40,7 @@ class StartupState:
     imaging: ImagingSession
     slew_limits: SlewLimits
     log_paths: Optional[LogPaths] = None
+    ntp_status: Optional[NtpStatus] = None
 
 
 def _connect_rotator(pwi4: PWI4, poll_s: float = 0.5) -> None:
@@ -147,10 +150,23 @@ def startup_observatory(config: StartupConfig) -> StartupState:
         filter_names=config.alpaca.filter_names,
     )
 
+    ntp_status = acquire_session_timing_snapshot(config.timing)
+    if ntp_status.timesrc == "WIN-NTP":
+        logger.info(
+            "Timing snapshot: %s offset=%s sync_age=%s ref=%s",
+            ntp_status.timesrc,
+            ntp_status.ntpoffs_s,
+            ntp_status.ntpage_s,
+            ntp_status.timeref,
+        )
+    else:
+        logger.info("Timing snapshot: %s (TIMEUNC=%.1f s)", ntp_status.timesrc, ntp_status.timeunc_s)
+
     logger.info("Startup complete")
     return StartupState(
         pwi4=pwi4,
         imaging=imaging,
         slew_limits=config.slew_limits,
         log_paths=log_paths,
+        ntp_status=ntp_status,
     )

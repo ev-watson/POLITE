@@ -10,6 +10,7 @@ from alpyca_tools.camera_ops import ExposureSettings, capture_image
 from alpyca_tools.fits_writer import FitsHeaderConfig, capture_fits
 
 from .alpaca import ImagingSession, move_rotator_absolute, open_imaging_session, set_filter_position
+from .timing import FilterWheelState
 from .config import AlpacaConfig
 
 
@@ -115,7 +116,7 @@ def select_filter(
     position: Union[int, str],
     poll_s: float = 0.5,
     timeout_s: float = 30.0,
-) -> int:
+) -> FilterWheelState:
     if session.filter_wheel is None:
         raise RuntimeError("No filter wheel connected")
     return set_filter_position(

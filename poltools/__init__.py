@@ -44,8 +44,16 @@ from .io import (
     group_by_filter,
     group_by_hwp_angle,
     group_pol_sequence,
+    load_pol_config_sidecar,
     read_pol_frame,
     write_pol_fits,
+)
+from .pol_config import (
+    SessionDetectorConfig,
+    polconfig_from_detector,
+    polconfig_from_fits_headers,
+    polconfig_snapshot,
+    write_pol_config_sidecar,
 )
 from .photometry import (
     aperture_peaks,
@@ -86,7 +94,9 @@ __all__ = [
     "system_mueller", "oe_intensities",
     "render_frame", "simulate_sequence", "make_scene",
     "write_pol_fits", "read_pol_frame", "group_by_hwp_angle", "group_by_filter",
-    "group_pol_sequence",
+    "group_pol_sequence", "load_pol_config_sidecar", "write_pol_config_sidecar",
+    "SessionDetectorConfig", "polconfig_from_detector", "polconfig_from_fits_headers",
+    "polconfig_snapshot",
     "detect_sources", "pair_oe", "measure_fluxes", "measure_pair",
     "photometer_sequence", "aperture_peaks",
     "ratio_r", "double_ratio", "double_difference", "lsq_modulation",

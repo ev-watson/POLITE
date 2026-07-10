@@ -14,9 +14,9 @@ Each point source appears twice on the detector. As the half-wave plate rotates,
 
 The library provides:
 
-- **Forward model** — Mueller matrices, 2-D point-spread functions, detector noise (via `caltools`)
-- **Reduction** — source detection, beam pairing, aperture photometry, modulation fit, standard-star calibration
-- **Uncertainties** — Modified Asymptotic debiasing (Plaszczynski et al. 2014), Naghizadeh–Khouei & Clarke (1993) position-angle intervals, SOLVEPOL residual polarization uncertainty
+- **Forward model** â€” Mueller matrices, 2-D point-spread functions, detector noise (via `caltools`)
+- **Reduction** â€” source detection, beam pairing, aperture photometry, modulation fit, standard-star calibration
+- **Uncertainties** â€” Modified Asymptotic debiasing (Plaszczynski et al. 2014), Naghizadehâ€“Khouei & Clarke (1993) position-angle intervals, SOLVEPOL residual polarization uncertainty
 
 Linear (*I*, *Q*, *U*) reduction is implemented now. The Mueller layer uses full 4-vector Stokes for possible future circular-polarization work.
 
@@ -48,32 +48,30 @@ results = pt.reduce_to_stokes([str(p) for p in paths], cfg,
 print(results[0])
 ```
 
-When flat fields are poor or missing, use `method="double_ratio"` (Tinbergen 1996; Masiero et al. 2007) — flat-field errors cancel in the ratio-of-ratios.
+When flat fields are poor or missing, use `method="double_ratio"` (Tinbergen 1996; Masiero et al. 2007) â€” flat-field errors cancel in the ratio-of-ratios.
 
 ## Package layout
 
-| Module | Role |
+| Module | Role|
 |--------|------|
-| `_types.py` | `PolConfig`, `BeamGeometry`, `FilterConfig`, `StokesResult` |
-| `mueller.py` | Mueller matrices, ordinary/extraordinary intensity model |
-| `simulate.py` | Synthetic 2-D FITS frames |
-| `io.py` | Polarimetry FITS keywords, filter and angle grouping |
-| `photometry.py` | Detection, beam pairing, aperture photometry |
-| `modulation.py` | Half-wave plate sequence ? normalized *q*, *u* |
-| `stokes.py` | Polarization fraction, position angle, error budget |
-| `errors.py` | Debiasing and uncertainty estimators |
-| `calibration.py` | Instrumental polarization, efficiency, position-angle zero-point |
-| `pipeline.py` | `reduce_to_stokes` end-to-end reducer |
-| `plotting.py` | Diagnostic figures |
-
+| `_types.py` | `PolConfig`, `BeamGeometry`, `FilterConfig`, `StokesResult`|
+| `mueller.py` | Mueller matrices, ordinary/extraordinary intensity model|
+| `simulate.py` | Synthetic 2-D FITS frames|
+| `io.py` | Polarimetry FITS keywords, filter and angle grouping|
+| `photometry.py` | Detection, beam pairing, aperture photometry|
+| `modulation.py` | Half-wave plate sequence ? normalized *q*, *u*|
+| `stokes.py` | Polarization fraction, position angle, error budget|
+| `errors.py` | Debiasing and uncertainty estimators|
+| `calibration.py` | Instrumental polarization, efficiency, position-angle zero-point|
+| `pipeline.py` | `reduce_to_stokes` end-to-end reducer|
+| `plotting.py` | Diagnostic figures|
 ## Reduction methods
 
-| Method | When to use |
+| Method | When to use|
 |--------|-------------|
-| `lsq` (default) | Flat-fielded frames; at least four half-wave plate angles; returns covariance and chi-squared |
-| `double_ratio` | Bad or missing flats; requires {0°, 22.5°, 45°, 67.5°} |
-| `double_difference` | Cross-check; first-order flat-field cancellation |
-
+| `lsq` (default) | Flat-fielded frames; at least four half-wave plate angles; returns covariance and chi-squared|
+| `double_ratio` | Bad or missing flats; requires {0Â°, 22.5Â°, 45Â°, 67.5Â°}|
+| `double_difference` | Cross-check; first-order flat-field cancellation|
 The Savart plate is dispersive: beam separation changes with filter. Register each filter slot with `default_efw_filters()` and reduce with `cfg.for_filter(name)`.
 
 ## Requirements
@@ -84,4 +82,4 @@ The Savart plate is dispersive: beam separation changes with filter. Register ea
 
 ## Citation
 
-If you use this software in published work, cite the underlying polarimetry methods (Masiero et al. 2007, PASP 119, 1126; Plaszczynski et al. 2014, MNRAS 439, 4048; Ramírez et al. 2017, MNRAS 472, 2793) and acknowledge the POLITE observatory software.
+If you use this software in published work, cite the underlying polarimetry methods (Masiero et al. 2007, PASP 119, 1126; Plaszczynski et al. 2014, MNRAS 439, 4048; RamÃ­rez et al. 2017, MNRAS 472, 2793) and acknowledge the POLITE observatory software.

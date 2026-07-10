@@ -22,6 +22,38 @@ bricks:
   bias:    {type: cal, frame: BIAS, exp: 0,  n: 20}
   darks60: {type: cal, frame: DARK, exp: 60, n: 15}
   darks30: {type: cal, frame: DARK, exp: 30, n: 15}
+  bias25:  {type: cal, frame: BIAS, exp: 0,  n: 25, readout_mode: 0, gain: 0}
+
+  # First-light exposure variants (override per target in plan)
+  polV8_03s:  {type: pol_seq, filter: "Photometric V", angles: 8, exp: 0.3, n: 3}
+  polV8_3s:   {type: pol_seq, filter: "Photometric V", angles: 8, exp: 3,   n: 2}
+  polR8_3s:   {type: pol_seq, filter: "Photometric R", angles: 8, exp: 3,   n: 2}
+  polV16_45s: {type: pol_seq, filter: "Photometric V", angles: 16, exp: 45, n: 1}
+
+  darks_short:
+    type: cal_multi
+    frames:
+      - {frame: DARK, exp: 0.2, n: 10}
+      - {frame: DARK, exp: 2, n: 10}
+      - {frame: DARK, exp: 5, n: 10}
+
+  twilightFlatV:
+    type: pol_flat
+    filter: "Photometric V"
+    angles: 4
+    exp: 2.0
+    n: 10
+    imagetyp: FLAT
+    object_name: TwilightFlat
+
+  twilightFlatR:
+    type: pol_flat
+    filter: "Photometric R"
+    angles: 4
+    exp: 2.0
+    n: 10
+    imagetyp: FLAT
+    object_name: TwilightFlat
 
 # Target catalog: names used bare in a plan resolve RA[hours] / Dec[deg] here (J2000).
 catalog:

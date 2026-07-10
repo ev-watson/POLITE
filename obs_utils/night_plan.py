@@ -18,6 +18,8 @@ Brick types (the ``type:`` field)::
     pol_seq      filter, angles|hwp, exp, n [, retardance=180, ...]  -> 1 LIGHT stack per HWP angle
     filter_loop  filters:[...], exp, n [, gain, offset]             -> 1 LIGHT stack per filter
     cal          frame:DARK|BIAS|FLAT, exp, n [, filter]            -> 1 calibration stack
+    cal_multi    frames:[{frame, exp, n}, ...]                       -> multiple cal stacks
+    pol_flat     filter, angles, exp, n [, imagetyp=FLAT]            -> polarimetric twilight flats
 
 Lay an item as a brick name (``polV8``) or a single-key map with inline
 overrides (``{polV8: {exp: 45}}``). A plan entry is ``TargetName: [bricks...]``
@@ -35,6 +37,8 @@ import yaml
 from .config import AlpacaConfig, Pwi4Config
 from .logging import LoggingConfig
 from .night_session import FramePlan, NightSessionConfig, TargetPlan
+from .qa_gates import QAGate, qa_gate_from_yaml
+from .session_context import SessionCaptureContext, session_context_from_yaml
 from .startup import StartupConfig
 
 logger = logging.getLogger(__name__)
@@ -109,7 +113,8 @@ def _expand_brick(name: str, spec: Dict[str, Any]) -> List[FramePlan]:
     if btype == "stack":
         return [FramePlan(
             frame_type="LIGHT", exposure_s=float(spec["exp"]), count=n,
-            filter=spec.get("filter"), object_name=spec.get("object_name"), **common,
+            filter=spec.get("filter"), object_name=spec.get("object_name"),
+            source_brick=name, **common,
         )]
 
     if btype == "filter_loop":
@@ -118,7 +123,7 @@ def _expand_brick(name: str, spec: Dict[str, Any]) -> List[FramePlan]:
             raise NightPlanError(f"filter_loop brick {name!r} needs a 'filters' list")
         return [FramePlan(
             frame_type="LIGHT", exposure_s=float(spec["exp"]), count=n,
-            filter=f, **common,
+            filter=f, source_brick=name, **common,
         ) for f in filters]
 
     if btype == "pol_seq":
@@ -131,15 +136,50 @@ def _expand_brick(name: str, spec: Dict[str, Any]) -> List[FramePlan]:
             frames.append(FramePlan(
                 frame_type="LIGHT", exposure_s=float(spec["exp"]), count=n,
                 filter=spec.get("filter"), hwp_angle_deg=float(a),
-                retardance_deg=retard, pol_seq_id=seq_id, pol_seq_index=i, **common,
+                retardance_deg=retard, pol_seq_id=seq_id, pol_seq_index=i,
+                source_brick=name, **common,
             ))
         return frames
+
+    if btype == "pol_flat":
+        angles = hwp_angles(spec.get("angles", 4))
+        _check_pol_sampling(angles)
+        retard = float(spec.get("retardance", 180.0))
+        seq_id = spec.get("pol_seq_id", name)
+        obj = spec.get("object_name", "TwilightFlat")
+        frame = str(spec.get("imagetyp", "FLAT")).upper()
+        frames = []
+        for i, a in enumerate(angles):
+            frames.append(FramePlan(
+                frame_type=frame, exposure_s=float(spec["exp"]), count=n,
+                filter=spec.get("filter"), hwp_angle_deg=float(a),
+                retardance_deg=retard, pol_seq_id=seq_id, pol_seq_index=i,
+                object_name=obj, source_brick=name, **common,
+            ))
+        return frames
+
+    if btype == "cal_multi":
+        subframes = spec.get("frames")
+        if not subframes:
+            raise NightPlanError(f"cal_multi brick {name!r} needs a 'frames' list")
+        out: List[FramePlan] = []
+        for sub in subframes:
+            frame = str(sub.get("frame", "DARK")).upper()
+            out.append(FramePlan(
+                frame_type=frame,
+                exposure_s=float(sub.get("exp", 0.0)),
+                count=int(sub.get("n", 1)),
+                filter=sub.get("filter"),
+                source_brick=name,
+                **_capture_kwargs({**spec, **sub}),
+            ))
+        return out
 
     if btype == "cal":
         frame = str(spec.get("frame", "DARK")).upper()
         return [FramePlan(
             frame_type=frame, exposure_s=float(spec.get("exp", 0.0)), count=n,
-            filter=spec.get("filter"), **common,
+            filter=spec.get("filter"), source_brick=name, **common,
         )]
 
     raise NightPlanError(f"Unknown brick type {btype!r} in {name!r}")
@@ -204,26 +244,36 @@ def build_config(
     """Assemble a NightSessionConfig from a parsed plan document + palette."""
     overrides = doc.get("override", {}) or {}
     targets: List[TargetPlan] = []
-    calibration_frames: List[FramePlan] = []
+    cal_before: List[FramePlan] = []
+    cal_after: List[FramePlan] = []
+    seen_targets = False
 
     for entry in doc.get("plan", []):
         if not isinstance(entry, dict) or len(entry) != 1 and "target" not in entry:
             raise NightPlanError(f"Bad plan entry: {entry!r}")
 
         if "cal" in entry:
-            calibration_frames.extend(_expand_lay(entry["cal"], palette, overrides))
+            expanded = _expand_lay(entry["cal"], palette, overrides)
+            if seen_targets:
+                cal_after.extend(expanded)
+            else:
+                cal_before.extend(expanded)
             continue
 
-        if "target" in entry:  # explicit inline-coords form
+        seen_targets = True
+
+        if "target" in entry:
             name = entry["target"]
             lay = entry.get("lay", [])
             ra, dec = entry.get("ra"), entry.get("dec")
             alt, az = entry.get("alt"), entry.get("az")
-        else:  # {Name: [bricks]} -> coords from catalog
+            track = bool(entry.get("track", True))
+        else:
             (name, lay), = entry.items()
             coords = catalog.get(name, {})
             ra, dec = coords.get("ra"), coords.get("dec")
             alt, az = coords.get("alt"), coords.get("az")
+            track = bool(coords.get("track", True))
             if ra is None and alt is None:
                 raise NightPlanError(
                     f"Target {name!r} not in catalog and has no inline coords; "
@@ -233,19 +283,29 @@ def build_config(
         targets.append(TargetPlan(
             name=str(name),
             ra_hours=ra, dec_deg=dec, alt_deg=alt, az_deg=az,
+            track=track,
             frames=_expand_lay(lay, palette, overrides),
         ))
+
+    qa_gates: List[QAGate] = []
+    for g in doc.get("qa_gates") or []:
+        qa_gates.append(qa_gate_from_yaml(g))
 
     return NightSessionConfig(
         startup=startup,
         targets=targets,
-        calibration_frames=calibration_frames,
+        calibration_before=cal_before,
+        calibration_after=cal_after,
         calibration_stage=doc.get("calibrate_stage", "after"),
         session_name=str(doc["session"]) if doc.get("session") is not None else None,
         base_data_dir=doc.get("base_data_dir", "data"),
         observer=doc.get("observer"),
         telescope=doc.get("telescope"),
         observatory=doc.get("observatory"),
+        capture_context=session_context_from_yaml(doc.get("camera")),
+        naming=doc.get("naming", "legacy"),
+        qa_gates=qa_gates,
+        catalog=dict(catalog),
     )
 
 
@@ -276,7 +336,21 @@ def load_night_plan(
 
     if startup is None:
         startup = _default_startup(doc.get("session"))
-    return build_config(doc, palette, catalog, startup)
+    config = build_config(doc, palette, catalog, startup)
+    # Merge plan-level observer/telescope into capture context when set.
+    ctx = config.capture_context
+    if ctx is not None:
+        updates = {}
+        if config.observer and not ctx.observer:
+            updates["observer"] = config.observer
+        if config.telescope and ctx.telescope == "CDK20" and doc.get("telescope"):
+            updates["telescope"] = config.telescope
+        if config.observatory and ctx.observatory == "Julian, CA" and doc.get("observatory"):
+            updates["observatory"] = config.observatory
+        if updates:
+            from dataclasses import replace as dc_replace
+            config = dc_replace(config, capture_context=dc_replace(ctx, **updates))
+    return config
 
 
 def _default_startup(session: Optional[Any]) -> StartupConfig:
@@ -323,13 +397,37 @@ def describe(config: NightSessionConfig) -> str:
         total_frames += nf
         total_exp += te
 
-    if config.calibration_frames:
-        lines.append(f"* calibration ({config.calibration_stage})")
-        nf, te = _fmt_frames(config.calibration_frames, "    ")
-        total_frames += nf
-        total_exp += te
+    if config.calibration_before or config.calibration_after:
+        lines.append(f"* calibration (before={len(config.calibration_before)} "
+                     f"after={len(config.calibration_after)}, "
+                     f"stage={config.calibration_stage})")
+        if config.calibration_before:
+            lines.append("  [before targets]")
+            nf, te = _fmt_frames(config.calibration_before, "    ")
+            total_frames += nf
+            total_exp += te
+        if config.calibration_after:
+            lines.append("  [after targets]")
+            nf, te = _fmt_frames(config.calibration_after, "    ")
+            total_frames += nf
+            total_exp += te
+
+    if config.qa_gates:
+        lines.append(f"* qa_gates: {len(config.qa_gates)}")
+        for g in config.qa_gates:
+            trig = g.after_target or g.after_cal or "?"
+            lines.append(f"    {g.handler} after {trig}")
 
     lines.append("")
+    if config.capture_context is not None:
+        ctx = config.capture_context
+        lines.append("camera:")
+        lines.append(f"  readout_mode={ctx.readout_mode} ({ctx.readout_mode_name})")
+        lines.append(f"  gain={ctx.gain_setting}  offset={ctx.offset_setting}")
+        lines.append(f"  egain={ctx.egain_e_per_adu} e-/ADU  ron={ctx.ron_e} e-")
+        lines.append(f"  cooler_setpoint={ctx.cooler_setpoint_c} C")
+        lines.append(f"  naming={config.naming}  base_data_dir={config.base_data_dir}")
+        lines.append("")
     lines.append(f"total: {total_frames} frames, {total_exp:g}s "
                  f"({total_exp / 3600.0:.2f}h) of open-shutter exposure "
                  "(excludes readout/slew/HWP-move overhead)")

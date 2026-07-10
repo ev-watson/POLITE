@@ -116,7 +116,7 @@ def load_cube_chunked(
 
 def sensor_config_from_header(
     path: str,
-    gain: float = 1.0,
+    gain: Optional[float] = None,
     pixel_size_um: Optional[float] = None,
 ) -> SensorConfig:
     """Build a ``SensorConfig`` from FITS header keywords.
@@ -125,13 +125,12 @@ def sensor_config_from_header(
     ----------
     path : str
         Path to any FITS file from the session.
-    gain : float
-        Conversion gain in e-/ADU. Many acquisition systems do not write
-        a reliable ``GAIN`` keyword, so this must be supplied or measured
-        separately.
+    gain : float, optional
+        Conversion gain in e-/ADU. Used only when ``EGAIN`` is absent from the
+        header and ``GAIN`` is not tagged as e-/ADU.
     pixel_size_um : float, optional
-        Override pixel pitch when ``XPIXSZ`` is missing. If both are
-        absent, raises rather than guessing.
+        Override pixel pitch when ``XPIXSZ`` is missing. For QHY268M frames,
+        defaults to 3.76 µm with a warning when both are absent.
 
     Notes
     -----
@@ -139,12 +138,33 @@ def sensor_config_from_header(
     absent, so downstream code can detect missing data instead of
     silently treating it as a real reading.
     """
+    import warnings
+
     hdr = fits.getheader(path)
+
+    if "EGAIN" in hdr:
+        gain_val = float(hdr["EGAIN"])
+    elif gain is not None:
+        gain_val = float(gain)
+        warnings.warn(
+            f"{path}: FITS header missing EGAIN; using supplied gain={gain_val} e-/ADU",
+            stacklevel=2,
+        )
+    else:
+        raise KeyError(
+            f"{path}: FITS header missing EGAIN; pass gain= explicitly."
+        )
 
     if "XPIXSZ" in hdr:
         pix = float(hdr["XPIXSZ"])
     elif pixel_size_um is not None:
         pix = float(pixel_size_um)
+    elif "QHY268" in str(hdr.get("INSTRUME", "")):
+        pix = 3.76
+        warnings.warn(
+            f"{path}: FITS header missing XPIXSZ; using QHY268M default 3.76 um",
+            stacklevel=2,
+        )
     else:
         raise KeyError(
             "FITS header is missing XPIXSZ; pass pixel_size_um explicitly."
@@ -156,7 +176,7 @@ def sensor_config_from_header(
         nx=int(hdr["NAXIS1"]),
         ny=int(hdr["NAXIS2"]),
         pixel_size_um=pix,
-        gain_e_per_adu=gain,
+        gain_e_per_adu=gain_val,
         temperature_c=temp,
         bitdepth=int(hdr.get("BITPIX", 16)),
         sensor_name=str(hdr.get("INSTRUME", "Unknown")),

@@ -1,0 +1,60 @@
+# First-light night plan - 2026-07-09 (Julian Observatory)
+# Preview:  scripts/plan_night.py night_plans/20260709.yaml
+# Run:      scripts/plan_night.py night_plans/20260709.yaml --run
+
+uses: palette.yaml
+session: "20260709"
+observer: "POLITE"
+telescope: "CDK20"
+observatory: "Julian, CA"
+base_data_dir: FITSDATA
+naming: polite
+calibrate_stage: both
+
+camera:
+  readout_mode: 0
+  readout_mode_name: "Mode 0"
+  gain: 0
+  offset: 30          # driver slider; re-verify with bias_qa at -20 C before science
+  egain_e_per_adu: 1.0
+  ron_e: 3.5
+  cooler_setpoint_c: -20.0
+  pixel_size_um: 3.76
+  plate_scale_arcsec: 0.224
+
+qa_gates:
+  - after_cal: bias25
+    handler: bias_qa
+    args: {abort_on_fail: false}
+  - after_target: "HD 154445"
+    handler: first_light_qa
+    args: {band: V, abort_on_fail: false}
+  - handler: sequence_audit
+    args: {}
+
+catalog:
+  "gamma Boo":   {ra: 14.53464, dec: 38.30833}
+  "HD 154892":   {ra: 17.12817, dec: 15.21056}
+  "BD+32 3739":  {ra: 20.20058, dec: 32.79556}
+  "HD 212311":   {ra: 22.36628, dec: 56.53194}
+  "HD 154445":   {ra: 17.09228, dec: -0.89222}
+  "HD 161056":   {ra: 17.72972, dec: -7.07944}
+  "Hiltner 960": {ra: 20.39122, dec: 39.34889}
+  "HD 204827":   {ra: 21.48269, dec: 58.74000}
+  "Melpomene":   {ra: 19.05, dec: -9.60, horizons_id: "18"}
+  "Juno":        {ra: 20.38, dec: -3.80, horizons_id: "3"}
+
+plan:
+  - cal: [bias25]
+  - {target: TwilightFlat, alt: 45, az: 118, track: false, lay: [twilightFlatV]}
+  - "gamma Boo":     [polV8_03s]
+  - "HD 154892":     [polV8, polR8]
+  - "HD 154445":     [polV8_3s, polR8_3s]
+  - "HD 161056":     [polV8_3s]
+  - "BD+32 3739":    [polV8]
+  - "Melpomene":     [polV16]
+  - "Hiltner 960":   [polV16_45s]
+  - "Juno":          [polV16]
+  - "HD 204827":     [polV8, polR8]
+  - "HD 212311":     [polV8]
+  - cal: [darks30, darks_short]

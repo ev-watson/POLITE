@@ -20,6 +20,22 @@ from alpyca_tools.camera_device import CameraDevice
 from alpyca_tools.camera_ops import download_image
 from astropy.io import fits
 
+from obs_utils.timing import FilterWheelState, TimingProvenance, stamp_timing_cards
+
+
+@dataclass
+class DetectorCards:
+    """Detector readout provenance (mirrors alpyca_tools.fits_writer.DetectorCards)."""
+
+    gain_setting: Optional[int] = None
+    egain_e_per_adu: Optional[float] = None
+    readout_mode: Optional[int] = None
+    readout_mode_name: Optional[str] = None
+    offset_setting: Optional[int] = None
+    cooler_setpoint_c: Optional[float] = None
+    pixel_size_um: Optional[float] = None
+    ron_e: Optional[float] = None
+
 
 @dataclass
 class PolarimetryCards:
@@ -85,9 +101,13 @@ class CaptureConfig:
 
     # Optional polarimetry block (HWP + α-BBO Savart). None for ordinary imaging.
     polarimetry: Optional["PolarimetryCards"] = None
+    detector: Optional[DetectorCards] = None
 
     # Extra instrument/pipeline cards.
     extra_cards: Dict[str, Any] = field(default_factory=dict)
+
+    timing: Optional[TimingProvenance] = None
+    filter_wheel_state: Optional[FilterWheelState] = None
 
     # If you want FITS CHECKSUM/DATASUM
     add_checksum: bool = True
@@ -138,6 +158,8 @@ def _build_header(c: CameraDevice, cfg: CaptureConfig, data_dtype: np.dtype, sha
     _set_card(hdr, "EXPOSURE", float(c.LastExposureDuration), "Exposure time [s]")
     _set_card(hdr, "DATE-OBS", str(c.LastExposureStartTime), "Exposure start time (UTC recommended)")
     _set_card(hdr, "TIMESYS", "UTC", "Time system")
+    if cfg.timing is not None:
+        stamp_timing_cards(hdr, cfg.timing, cfg.filter_wheel_state)
 
     # Binning / subframe
     _set_card(hdr, "XBINNING", int(c.BinX), "Binning factor in X")
@@ -159,12 +181,17 @@ def _build_header(c: CameraDevice, cfg: CaptureConfig, data_dtype: np.dtype, sha
     # Camera settings commonly needed for reduction
     # Not all cameras expose these; keep them best-effort.
     try:
-        _set_card(hdr, "GAIN", int(c.Gain), "Camera gain setting")
+        gain_val = int(c.Gain)
+        if cfg.detector is not None and cfg.detector.gain_setting is not None:
+            gain_val = int(cfg.detector.gain_setting)
+        _set_card(hdr, "GAIN", gain_val, "QHY gain index, not e-/ADU")
     except Exception:
         pass
 
     try:
         off = c.Offset
+        if cfg.detector is not None and cfg.detector.offset_setting is not None:
+            off = cfg.detector.offset_setting
         if isinstance(off, (int, np.integer)):
             _set_card(hdr, "OFFSET", int(off), "Camera offset setting")
             _set_card(hdr, "PEDESTAL", int(off), "Bias pedestal (if applicable)")
@@ -177,6 +204,17 @@ def _build_header(c: CameraDevice, cfg: CaptureConfig, data_dtype: np.dtype, sha
         _set_card(hdr, "CCD-TEMP", float(c.CCDTemperature), "Detector temperature [C]")
     except Exception:
         pass
+
+    det = cfg.detector
+    if det is not None:
+        _set_card(hdr, "EGAIN", det.egain_e_per_adu, "Conversion gain [e-/ADU]")
+        _set_card(hdr, "READMODE", det.readout_mode, "Readout mode index")
+        _set_card(hdr, "RMODE", det.readout_mode_name, "Readout mode name")
+        _set_card(hdr, "SET-TEMP", det.cooler_setpoint_c, "Cooler setpoint [C]")
+        if det.pixel_size_um is not None:
+            _set_card(hdr, "XPIXSZ", det.pixel_size_um, "Pixel size X [um]")
+            _set_card(hdr, "YPIXSZ", det.pixel_size_um, "Pixel size Y [um]")
+        _set_card(hdr, "RON", det.ron_e, "Read noise [e-]")
 
     # Filter wheel keyword conventions vary; include a simple one if supplied.
     _set_card(hdr, "FILTER", cfg.filter_name, "Filter name")

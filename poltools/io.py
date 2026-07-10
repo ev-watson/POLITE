@@ -29,6 +29,8 @@ POL_KEYWORDS = {
     "POLEFF": "Polarization (modulation) efficiency",
     "PIXSCALE": "Plate scale [arcsec/pixel]",
     "EGAIN": "Conversion gain [e-/ADU]",
+    "READMODE": "Readout mode index",
+    "SET-TEMP": "Cooler setpoint [C]",
     "SAVMAT": "Savart-plate material",
     "SAVTHK": "Savart-plate thickness [mm]",
     "WAVELEN": "Filter effective wavelength [nm]",
@@ -153,3 +155,9 @@ def group_pol_sequence(paths: List[Union[str, Path]]) -> "OrderedDict[float, str
         pairs.append((_read_hwp_angle(hdr, p), str(p)))
     pairs.sort(key=lambda t: t[0])
     return OrderedDict(pairs)
+
+
+def load_pol_config_sidecar(path: Union[str, Path], *, filter_name: Optional[str] = None) -> PolConfig:
+    """Load :class:`PolConfig` from a capture-session ``pol_config.yaml`` sidecar."""
+    from .pol_config import load_pol_config_sidecar as _load
+    return _load(path, filter_name=filter_name)
