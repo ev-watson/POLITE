@@ -45,7 +45,17 @@ bricks:
   # Keep the per-frame trail under ~2 px. 0.05 s is a starting point for a near-
   # equatorial pair with NO RA hold; lengthen if RA holds the field, shorten if it trails.
   polV8_drift: {type: pol_seq, filter: "Photometric V", angles: 8, exp: 0.05, n: 2}
-  # Matched darks for the drift exposure. If you change polV8_drift exp, change this to match.
+  # Night-sky SUPER-FLAT: dedicated drift LIGHT frames, median/sigma-clip-combined
+  # into one flat PER HWP ANGLE in reduction. No sky (2am) and no even illuminator,
+  # so the flat is built from the data itself -- the field drifts (dead DEC) so
+  # stars land on different pixels and are rejected, leaving the per-beam response
+  # through the full HWP+Savart train. 8 angles match polV8_drift so every science
+  # angle has a flat. exp MUST equal polV8_drift (same signal regime); n=20 is a
+  # floor for star rejection in a sparse field -- raise if the field is crowded.
+  # These are LIGHT frames (IMAGETYP=LIGHT), NOT illuminated FLATs; label is honest.
+  superflatV_drift: {type: pol_seq, filter: "Photometric V", angles: 8, exp: 0.05, n: 20}
+  # Matched darks for the drift exposure. If you change polV8_drift/superflatV_drift
+  # exp, change this to match (both use 0.05 s).
   darks_drift:
     type: cal_multi
     frames:
@@ -64,10 +74,15 @@ plan:
   # --- bias first (no pointing) ---
   - cal: [bias25]
 
-  # --- V flats through the full train, fixed pointing, no slew ---
-  # (twilightFlatV: 4 HWP angles x 10 FLAT frames; sky flat at the stuck pointing
-  #  or a dome/flat-panel screen. Drift averages out stars.)
-  - {target: "V flats (fixed pointing)", track: false, lay: [twilightFlatV]}
+  # --- night-sky SUPER-FLAT from drifting frames (no illuminator available) ---
+  # 2am, no twilight/sky flat and no even illuminator, so we DON'T take dedicated
+  # illuminated flats (pointing the polarimeter at a dark dome just yields darks
+  # mislabeled as flats). Instead collect many drifting LIGHT frames and build the
+  # flat in reduction by median/sigma-clip-combining PER HWP ANGLE. Qualitative
+  # flat only: captures two-beam geometry + relative throughput, not a high-SNR
+  # pixel flat (the night sky here is faint). Tune superflatV_drift exp/n at the
+  # console: the field must visibly move between frames, star-free majority/pixel.
+  - {target: "Night-sky super-flat V (drift)", track: false, lay: [{superflatV_drift: {pol_seq_id: "superflatV_drift"}}]}
 
   # --- drift polarimetry on the brightest isolated pair currently in the field ---
   # Coordinate-less targets => runner takes frames at the current pointing, no slew.
@@ -77,5 +92,7 @@ plan:
   #       beams still on the detector, then run the rotated repeat below. <<<
   - {target: "Drift pair A +45rot", track: false, lay: [{polV8_drift: {pol_seq_id: "driftA_polV8_rot45"}}]}
 
-  # --- darks after: matched to every exposure used (drift 0.05 s; flats 2 s; + 0.2/2/5 s) ---
+  # --- darks after: matched to every exposure used. Science drift AND the super-
+  #     flat are both 0.05 s -> darks_drift covers them; darks_short (0.2/2/5 s)
+  #     kept for short-dark sanity / DSNU. ---
   - cal: [darks_drift, darks_short]
