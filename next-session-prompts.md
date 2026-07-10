@@ -10,6 +10,15 @@ reuses the tested capture path. `plan_night.py --run` must NOT be used (it homes
 the mount). EFW order is now Clear,B,V,R,Dark in both the Python config and the
 ASCOM Remote driver.
 
+**Pre-flight (server moved + DATE-OBS fix, 2026-07-10):** The QHY Alpaca server
+is now `qhy_alpaca/` (was `third_party/alpaca-qhyccd-camera/`). On the observatory
+PC: `git pull`, relaunch via `scripts/start_qhy_alpaca_server.ps1`, then capture
+one frame and confirm `DATE-OBS` is the current UTC (not 1995-10-09) and
+`TIME-SRC=SYSCLOCK`. `qhy_alpaca/config.windows.yaml` sets `has_gps: false`
+(QHY268M has no GPS module) — do not enable unless a real receiver is installed.
+Also `pip install rich` in the observatory POLITE env for the new night display
+(optional; degrades to plain logging without it).
+
 **What to do:**
 1. If the salvage night has NOT run yet, on the observatory PC:
    `git pull` →
@@ -38,6 +47,16 @@ all metadata documented per `salvage_no_pointing_checklist.md`.
 ---
 
 ## DONE
+
+- **2026-07-10** — Tooling session (committed+pushed, `024db68`). (1) Un-vendored
+  the QHY Alpaca server `third_party/alpaca-qhyccd-camera/` → `qhy_alpaca/` and
+  fixed the DATE-OBS 1990s bug (GPS header misparse on GPS-less QHY268M) via
+  `defaults.has_gps` gate + `gps_max_clock_skew_s` sanity window. (2) Made the QA
+  pipeline outlier-robust (sigma-clipped stats) and non-blocking (PASS/WARN/FAIL
+  tiers in `obs_utils/qa_lib.py`; WARN keeps capturing); added
+  `tests/test_qa_lib.py`. (3) Added `obs_utils/night_display.py` rich NightReporter
+  (live progress bar, banner, colored QA) threaded through night + salvage runners.
+  125 tests pass. Server not yet import/hardware-tested (pydantic/libqhyccd on obs PC).
 
 - **2026-07-10** — Salvage-night prep for dead-DEC commissioning. Built no-mount
   runner `scripts/run_salvage_night.py`; fixed EFW `filter_names` order
