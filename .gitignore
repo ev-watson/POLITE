@@ -19,19 +19,22 @@ __pycache__/
 .claude/
 .cursor/
 
-# temporary images and outputs
+# generated outputs and local data — our actual data/renders, never shipped to git
 tmpimg/
 final-imgs/
+generated/
 
 # local dev / project management
 CLAUDE.md
+AGENTS.md
 handoff.md
 MANUAL.md
 prompts/
 reference-sheets/
 tests/
+!/tests/
+!/tests/*.py
 docs/
-reports/
 
 # PDFs (reference materials)
 *.pdf

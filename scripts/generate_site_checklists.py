@@ -8,8 +8,6 @@ Editable Markdown sources in the repo root; run this script to rebuild PDFs:
 
 from __future__ import annotations
 
-import re
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Sequence
 
@@ -262,58 +260,17 @@ def _render_section_checked(
     _item_row(pdf, text, x, width, last=(i == len(items) - 1), checked=checked)
 
 
-@dataclass
-class _MdItem:
-  text: str
-  checked: bool = False
+def checklist_pdf_from_sections(
+  title: str,
+  subtitle: str,
+  sections: Sequence[tuple[str, Sequence[tuple[str, bool]]]],
+  out: Path,
+) -> Path:
+  """Render a checklist PDF from inline (section-title, [(item, checked)]) data.
 
-
-@dataclass
-class _MdSection:
-  title: str
-  items: list[_MdItem] = field(default_factory=list)
-
-
-def _strip_md_inline(text: str) -> str:
-  text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)
-  text = text.replace("`", "")
-  return text.strip()
-
-
-def parse_checklist_markdown(path: Path) -> tuple[str, str, list[_MdSection]]:
-  """Parse a simple checklist Markdown file (# title, ## sections, - [ ] items)."""
-  title = path.stem.replace("_", " ").title()
-  subtitle_parts: list[str] = []
-  sections: list[_MdSection] = []
-  current: _MdSection | None = None
-
-  for raw in path.read_text(encoding="utf-8").splitlines():
-    line = raw.rstrip()
-    if not line:
-      continue
-    if line.startswith("# "):
-      title = _strip_md_inline(line[2:])
-      continue
-    if line.startswith("## "):
-      current = _MdSection(title=_strip_md_inline(line[3:]))
-      sections.append(current)
-      continue
-    if current is None:
-      subtitle_parts.append(_strip_md_inline(line))
-      continue
-    if line.startswith("- [x] "):
-      current.items.append(_MdItem(_strip_md_inline(line[6:]), checked=True))
-    elif line.startswith("- [ ] "):
-      current.items.append(_MdItem(_strip_md_inline(line[6:]), checked=False))
-    elif line.startswith("- "):
-      current.items.append(_MdItem(_strip_md_inline(line[2:]), checked=False))
-
-  return title, " ".join(subtitle_parts), sections
-
-
-def checklist_pdf_from_markdown(md_path: Path) -> Path:
-  """Render a Markdown checklist to a sibling PDF in the same directory."""
-  title, subtitle, sections = parse_checklist_markdown(md_path)
+  Self-contained: checklist content is defined in code (the builder functions
+  below), so no external Markdown source files are read.
+  """
   pdf = ChecklistPDF("P", "in", "Letter")
   # Manual pagination: rows have fixed-coordinate borders, so an automatic break
   # inside a text multi_cell would desync borders from text. _ensure_space adds
@@ -335,11 +292,9 @@ def checklist_pdf_from_markdown(md_path: Path) -> Path:
 
   x = pdf.l_margin
   width = pdf.w - pdf.l_margin - pdf.r_margin
-  for section in sections:
-    pairs = [(item.text, item.checked) for item in section.items]
-    _render_section_checked(pdf, section.title, pairs, x, width)
+  for section_title, items in sections:
+    _render_section_checked(pdf, section_title, list(items), x, width)
 
-  out = md_path.with_suffix(".pdf")
   pdf.output(str(out))
   return out
 
@@ -464,11 +419,195 @@ def startup_shutdown_checklist() -> Path:
 
 
 def before_observations_checklist() -> Path:
-  return checklist_pdf_from_markdown(ROOT / "before_observations_checklist.md")
+  title = "Before Starting Observations"
+  subtitle = (
+    "First light 2026-07-09. Observatory Windows PC (PWI4 :8220, ASCOM Alpaca "
+    ":11111). Drive the night from night_plans/20260709.yaml into "
+    "FITSDATA/20260709/. Dry-run preview: 270 frames, 3 QA gates, 1.01 h "
+    "open-shutter."
+  )
+  sections = [
+    ("Already done (software / lab)", [
+      ("Night plan YAML, palette bricks, QA hooks, polite naming (dry-run: 270 frames, 3 QA gates)", True),
+      ("FITS provenance wired: EGAIN, GAIN, READMODE, OFFSET, SET-TEMP, INSTROT, HWPANG", True),
+      ("pol_config.yaml sidecar + block_manifest.jsonl written by the night runner", True),
+      ("HWP hardware test: 8 frames in FITSDATA/hwp_test/; no pixels pinned at 0", True),
+      ("Reduction stack: poltools lsq (default) + double_ratio cross-check available", True),
+    ]),
+    ("Python environment (observatory PC)", [
+      ("venv created with Python 3.13 and activated", False),
+      ("pip install of science + device packages (numpy scipy astropy photutils matplotlib pyyaml alpyca requests astroquery) succeeds", False),
+      ("caltools and poltools installed editable (pip install -e)", False),
+      ("Import check prints \"env ok\" (alpaca = alpyca ASCOM client; astroquery = Horizons)", False),
+      ("obs_utils / alpyca_tools import in place from repo root - run all scripts from repo root, no install needed", False),
+    ]),
+    ("Drivers and device software (observatory PC)", [
+      ("ASCOM Platform 6.6+ present - confirm version", False),
+      ("ASCOM Remote Server installed and exposing devices on Alpaca :11111 (separate from the Platform)", False),
+      ("QHY camera driver (QHYCCD All-In-One / SDK) + ASCOM QHY driver", False),
+      ("ZWO EFW filter-wheel driver + ASCOM driver", False),
+      ("Optec Pyxis rotator ASCOM driver (drives the HWP rotator)", False),
+      ("PWI4 (PlaneWave) installed; listening on :8220; pointing model file present", False),
+      ("USB-serial driver (FTDI / Prolific) for the Pyxis RJ12-to-USB link", False),
+    ]),
+    ("Sync code to Windows", [
+      ("Latest POLITE repo on the observatory PC (git pull)", False),
+      ("QHY Alpaca server deps installed (scripts\\install_qhy_alpaca_deps.ps1)", False),
+      ("astroquery import works (automated asteroid ephemerides), or JPL Horizons manual fallback ready", False),
+    ]),
+    ("QHY268M SDK-direct camera (bypasses broken ASCOM QHY driver)", [
+      ("Scan lists QHY268M (set $env:QHYCCD_DLL if needed)", False),
+      ("Camera server responds on :11112", False),
+      ("qhy_alpaca_smoke_test.py writes a FITS", False),
+      ("observatory_smoke_test.py passes (needs PWI4 + Remote Server for EFW/Pyxis)", False),
+    ]),
+    ("ASCOM / Alpaca bring-up (EFW + Pyxis on :11111)", [
+      ("ASCOM Remote Server running; EFW + Pyxis on Alpaca :11111 (QHY camera is on :11112)", False),
+      ("PWI4 GUI running (:8220); mount homed; pointing model loaded; rotator + focuser connected", False),
+      ("Pyxis HWP reachable as an Alpaca rotator; EFW initialized (V and R slots correct)", False),
+      ("user_config.py device indices match the Remote Server (camera / wheel / rotator)", False),
+      ("Observatory PC clock is NTP-synced (DATE-OBS and asteroid ephemerides depend on it; timing cards read the clock)", False),
+      ("python scripts/observatory_smoke_test.py - home, slew, HWP move, one FITS", False),
+    ]),
+    ("Detector settings (lock for the whole night)", [
+      ("Gain 0 for the entire night - NOT the gain 30 used on the HWP bench test. EGAIN=1.0 e-/ADU and RON=3.5 e- are only valid at Mode 0, gain 0", False),
+      ("Readout Mode 0, offset 30 (matches plan camera block and 2026-03 bench)", False),
+      ("Cooler to -20 C; wait for stabilization (CCD-TEMP within ~1 C of SET-TEMP)", False),
+      ("5 bias frames: min ADU > 0 (no pixels pinned at 0), sensible pedestal from offset 30", False),
+      ("Brightest standards do not saturate - keep peak below ~60% FWC (~30 kADU); short exposures already set for gamma Boo and HD 154445", False),
+      ("HWP backlash / settle values set from bench", False),
+    ]),
+    ("Dry run (no hardware)", [
+      ("python scripts/plan_night.py night_plans/20260709.yaml", False),
+      ("Review: 270 frames, 3 QA gates, camera block gain=0 offset=30 cooler=-20 C, ends with \"(dry-run; pass --run to execute)\"", False),
+      ("Dry run does NOT connect, slew, move HWP, expose, or run QA on FITS", False),
+    ]),
+    ("After dry run - before roof", [
+      ("FITSDATA/ exists and is writable on Windows", False),
+      ("Moon check for 2026-07-09: phase and altitude; keep targets >~30 deg from the Moon (block log records MOONSEP)", False),
+      ("Twilight flat exposure tuning ready (adjust exp between HWP angle sets; target 15-35 kADU, 30-60% FWC)", False),
+      ("Focus per filter (~20:40) - manual", False),
+      ("Do NOT change gain / readout mode / offset after bias QA passes - it invalidates masters and the CMOS error model", False),
+    ]),
+    ("Run the night - CORE dataset (must-get)", [
+      ("python scripts/plan_night.py night_plans/20260709.yaml --run", False),
+      ("gamma Boo: confirm focus AND that BOTH Savart beams are visible/paired before science", False),
+      ("HD 154892 (unpolarized), then HD 154445 (polarized) - polV8 in V", False),
+      ("After HD 154445: first_light_qa reduces it (reference P=3.67%, PA=88.6 deg); reduce and confirm BEFORE rotating", False),
+      ("MANUAL rotator repeat: rotate PWI4 field rotator +45 deg, recenter HD 154445, run the polV8_3s repeat (POLSEQ HD154445_polV8_rot45)", False),
+      ("Coord-transform check: detector-frame q,u SHOULD change; sky-frame P,PA should MATCH the first run (both near ref). Mismatch = sign / WCS / beam-label / HWP-zero / rotator-convention error - note it, keep observing", False),
+      ("Matching darks (darks30 + darks_short) captured - core dataset is now self-contained", False),
+      ("End of night: sequence_audit runs automatically (HWP angle-set completeness per POLSEQ)", False),
+    ]),
+    ("Run the night - OPTIONAL (only if sky holds and time remains)", [
+      ("Priority order: HD 161056, BD+32 3739, HD 204827 (+R), HD 212311, Melpomene, Juno, Hiltner 960", False),
+      ("Skip freely if high clouds come in (common after 01:00-02:00). A complete core dataset beats a half-finished long one", False),
+      ("Extra time -> repeat HD 154445 / HD 154892 or take more darks/flats rather than debugging the pipeline in the dark", False),
+    ]),
+    ("Minimum success (this is the bar for first light)", [
+      ("Detector passes bias / RON sanity check", False),
+      ("V-band HWP flats acquired", False),
+      ("Both Savart beams automatically detected and stay paired through the HWP sequence", False),
+      ("HD 154892 reduces to low polarization", False),
+      ("HD 154445 shows clear 4-theta modulation", False),
+      ("lsq and double_ratio give consistent q, u", False),
+      ("Rotator +45 repeat of HD 154445 gives consistent sky-frame P, PA", False),
+      ("Pipeline produces q, u, P, PA and uncertainties with no manual intervention", False),
+    ]),
+    ("Stretch goals (NOT required tonight; defer to next run)", [
+      ("Four polarized + four unpolarized standards; polarimetric efficiency; instrumental-polarization model", False),
+      ("Asteroid polarimetry (Melpomene, Juno); R-band calibration; dawn characterization + PTC ladder", False),
+      ("Publication-quality uncertainties", False),
+    ]),
+    ("First-light field card (tape to the console)", [
+      ("Never stop collecting data because the reduction looks wrong - the sky is the scarce resource, not the pipeline", False),
+      ("Do NOT change gain / offset / mode / HWP-zero / focus / rotator calibration mid-night unless hardware is clearly broken", False),
+      ("Preserve raw FITS: never overwrite, rename, crop, or preprocess in place", False),
+      ("Log one-line breadcrumbs with UT: \"22:43 possible wrong beam\", \"target drifted\", \"cloud\"", False),
+      ("If one reduction fails, move on and keep collecting standards / darks / flats", False),
+      ("Before shutdown, verify only: all FITS exist, logs saved, calibration frames (bias/flats/darks) taken", False),
+    ]),
+  ]
+  return checklist_pdf_from_sections(title, subtitle, sections, ROOT / "before_observations_checklist.pdf")
 
 
 def salvage_no_pointing_checklist() -> Path:
-  return checklist_pdf_from_markdown(ROOT / "salvage_no_pointing_checklist.md")
+  title = "Salvage Night - No Telescope Pointing"
+  subtitle = (
+    "DEC drive is dead - engaging DEC auto-disconnects the mount, so there is "
+    "NO slewing, NO pointing, and NO manual DEC nudge. RA can only be engaged "
+    "to hold/limit RA drift, not to slew. You cannot choose a target: you "
+    "observe whatever pair is already in the field. Shift the night from SKY "
+    "commissioning to INSTRUMENT commissioning. Salvage goal is qualitative "
+    "only - is HWP modulation present, can the beam pair be tracked "
+    "frame-by-frame, does the detector-frame Stokes vector transform correctly "
+    "when the whole polarimeter is rotated. NOT calibrated P or PA (that needs "
+    "a working mount). Focus working means the optics, camera, and Savart "
+    "splitter are almost certainly fine - that is the encouraging part."
+  )
+  sections = [
+    ("Document the failure first (before it changes or is forgotten)", [
+      ("DEC motor: completely dead, or intermittent? Note exact symptom", False),
+      ("Confirm behavior: does engaging DEC still auto-disconnect the mount every time?", False),
+      ("Manual DEC slew: no response / disconnects / other - record what happens", False),
+      ("RA: does engaging RA hold the field (cancel sidereal drift) or only lock the axis? Note the residual drift you actually see", False),
+      ("PWI4 error messages: copy verbatim + screenshot", False),
+      ("Time (UTC), camera temp, and sky conditions at the time of failure", False),
+    ]),
+    ("Preserve what you already have", [
+      ("Keep every focused doubled-star frame already on disk", False),
+      ("Do NOT overwrite, rename, crop, or reprocess existing frames in place", False),
+      ("Copy the existing frames to a second location NOW, before collecting more", False),
+    ]),
+    ("Camera calibration (needs no pointing - do this regardless of the mount)", [
+      ("25-50 bias frames at the final camera mode / gain / offset / temp (Mode 0, gain 0, offset 30, -20 C)", False),
+      ("Matched darks for EVERY exposure time used tonight - include the very short drift exposures", False),
+      ("V-band flats through the full optical train at HWP 0, 22.5, 45, 67.5 deg; at least 10 frames per angle; do NOT change camera settings", False),
+      ("Flats source: twilight sky at the current fixed pointing, or a dome / flat-panel screen if reachable (sky flats do not need tracking; drift actually averages out stars)", False),
+    ]),
+    ("Instrument commissioning (highest salvage value)", [
+      ("Confirm BOTH Savart beams are present for the pair(s) currently in the field", False),
+      ("Measure beam separation and orientation (PA) - repeat at a few field positions if more than one pair is available, to map any variation across the detector", False),
+      ("Confirm HWP rotation works: run scripts/hwp_modulation_test.py (or step the HWP through the full sequence and confirm the flux ratio modulates)", False),
+      ("Plate scale from a known star pair, if short exposures are clean enough to centroid", False),
+    ]),
+    ("Drift-through polarimetry (bright isolated pair now in the field)", [
+      ("Pick the brightest isolated pair currently on the detector - you cannot point, so use what is there. Record its approximate position and declination", False),
+      ("Know your drift rate: sky moves ~15 arcsec x cos(dec) per second = up to ~67 px/s near the equator at 0.224 arcsec/px. If RA holds sidereal, drift is far less", False),
+      ("Set exposures short enough to keep images compact (aim < ~2 px trail). Near the equator with no RA hold that is tens of ms; lengthen if RA is holding the field", False),
+      ("Run a complete polV8 sequence as fast as possible while the pair stays in a clean region", False),
+      ("Repeat the same polV8 once or twice while the pair is still clean - redundancy for later centroid tracking and photometry", False),
+      ("Rotate the WHOLE polarimeter +45 deg (field rotator) and repeat the same sequence on the same pair, provided both beams stay on the detector", False),
+      ("Keep the whole-instrument-rotation dataset and the HWP-only dataset SEPARATE - they test different coordinate transforms", False),
+      ("Do NOT attempt live analysis - just collect and log", False),
+    ]),
+    ("Log every block (paper or file)", [
+      ("UTC; exposure time; filter; HWP angle; whole-polarimeter rotator angle", False),
+      ("Camera temperature; gain; readout mode; offset", False),
+      ("Approximate source position on the detector", False),
+      ("Whether the source drifted near an edge, bad pixels, or another stellar pair", False),
+    ]),
+    ("Do NOT", [
+      ("Do NOT force long tracked exposures - a dead DEC gives elongated stars and frustration", False),
+      ("Do NOT change camera gain / mode / offset / HWP-zero mid-session (invalidates the calibration)", False),
+      ("Do NOT attempt to point, slew, or engage DEC (auto-disconnects the mount)", False),
+    ]),
+    ("Before shutdown - verify", [
+      ("All FITS files exist and filenames are unique", False),
+      ("Every HWP angle is present in each sequence", False),
+      ("Rotator angle is recorded for every block", False),
+      ("Data AND logs AND the failure documentation are copied to a second location", False),
+    ]),
+    ("Salvage dataset payoff (what this buys you)", [
+      ("One or more drifting polV8 sequences at the original polarimeter angle", False),
+      ("The same sequence after a +45 deg whole-polarimeter rotation", False),
+      ("Biases, matched darks, angle-matched V flats", False),
+      ("Beam-geometry and HWP-modulation measurements", False),
+      ("Complete metadata and the documented DEC failure", False),
+      ("Enables later tests: modulation present? beam pair trackable frame-by-frame? detector-frame Stokes transforms correctly under instrument rotation?", False),
+    ]),
+  ]
+  return checklist_pdf_from_sections(title, subtitle, sections, ROOT / "salvage_no_pointing_checklist.pdf")
 
 
 def main() -> None:

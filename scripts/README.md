@@ -149,13 +149,5 @@ frames), `filter_loop`, `cal`.
 
 ## Session + simulation
 
-- **`new_night_session.py`** — generate a blank *Python* night-session script
-  from the `obs_utils.night_session` template (uses the current QHY/EFW/Pyxis
-  Alpaca config via `obs_utils.user_config`). Lower-level alternative to the
-  brick plans above; prefer the YAML plans for routine nights.
 - **`polarimetry_showcase.py`** — end-to-end `poltools` **simulation** showcase
   (no hardware); writes figures/tables under `docs/polarimetry/`.
-
-## Archived
-
-Superseded / dated one-offs live in [`archive/`](archive/).
