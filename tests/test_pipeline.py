@@ -91,10 +91,10 @@ def test_repeat_angle_frames_combined_not_dropped(cfg, rng, tmp_path):
     scene = pt.make_scene(positions, [(1, qt, ut, 0)], [6e6])
     p1 = pt.simulate_sequence(scene, cfg, out_dir=tmp_path / "a", exptime_s=15.0,
                               seeing_arcsec=2.0, sky_e_per_px=60.0, rng=rng,
-                              shape=(256, 256), seq_id="A")
+                              shape=(256, 256), seq_id="REPEAT")
     p2 = pt.simulate_sequence(scene, cfg, out_dir=tmp_path / "b", exptime_s=15.0,
                               seeing_arcsec=2.0, sky_e_per_px=60.0, rng=rng,
-                              shape=(256, 256), seq_id="B")
+                              shape=(256, 256), seq_id="REPEAT")
     allp = [str(p) for p in (list(p1) + list(p2))]
     # grouping keeps both frames per angle (not last-wins)
     groups = pt.group_by_hwp_angle(allp)
@@ -118,7 +118,7 @@ def test_median_combine_rejects_cosmic_ray(cfg, rng, tmp_path):
     scene = pt.make_scene(positions, [(1, qt, ut, 0)], [6e6])
     seqs = [pt.simulate_sequence(scene, cfg, out_dir=tmp_path / s, exptime_s=15.0,
                                  seeing_arcsec=2.0, sky_e_per_px=60.0, rng=rng,
-                                 shape=(256, 256), seq_id=s)
+                                 shape=(256, 256), seq_id="REPEAT")
             for s in ("A", "B", "C")]
     allp = [str(p) for seq in seqs for p in seq]
     # corrupt ONE frame at ONE angle: a saturating cosmic on the o-beam core
@@ -209,3 +209,27 @@ def test_default_method_is_lsq(cfg, rng, tmp_path):
                               r_ap=7, r_in=12, r_out=20)[0]
     assert res.metadata["method"] == "lsq"
     assert "chi2" in res.scalar_summary  # lsq-only diagnostic made it through
+
+
+def test_mixed_sequences_fail_closed_and_grouped_wrapper_succeeds(
+    cfg, rng, tmp_path
+):
+    positions = [(128.0, 128.0)]
+    scene = pt.make_scene(positions, [(1, 0.03, -0.02, 0)], [6e6])
+    paths = []
+    for seq_id in ("SCI_A", "SCI_B"):
+        paths.extend(pt.simulate_sequence(
+            scene, cfg, out_dir=tmp_path / seq_id, exptime_s=5.0,
+            seeing_arcsec=2.0, sky_e_per_px=60.0, rng=rng,
+            shape=(256, 256), seq_id=seq_id,
+        ))
+    strings = [str(path) for path in paths]
+    with pytest.raises(ValueError, match="multiple OBJECT/POLSEQ"):
+        pt.reduce_to_stokes(
+            strings, cfg, o_positions=positions, method="double_ratio"
+        )
+    grouped = pt.reduce_pol_sequences(
+        strings, cfg, o_positions=positions, method="double_ratio"
+    )
+    assert {key[1] for key in grouped} == {"SCI_A", "SCI_B"}
+    assert all(len(results) == 1 for results in grouped.values())

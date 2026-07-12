@@ -18,11 +18,13 @@ def main() -> int:
     p.add_argument("paths", nargs="+", help="Science FITS files or directory")
     p.add_argument("--pol-config", type=Path, default=None)
     p.add_argument("--band", default="V")
+    p.add_argument("--reference", default="HD 154445")
     p.add_argument("--abort", action="store_true")
     args = p.parse_args()
     result = run_first_light_qa(
         args.paths,
         pol_config_path=args.pol_config,
+        ref_name=args.reference,
         band=args.band,
         abort_on_fail=args.abort,
     )

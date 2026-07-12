@@ -13,14 +13,15 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union
 
 import numpy as np
-from alpyca_tools.camera_device import CameraDevice
-from alpyca_tools.camera_ops import download_image
 from astropy.io import fits
 
 from obs_utils.timing import FilterWheelState, TimingProvenance, stamp_timing_cards
+
+if TYPE_CHECKING:
+    from alpyca_tools.camera_device import CameraDevice
 
 
 @dataclass
@@ -122,6 +123,8 @@ def _alpaca_image_to_numpy(c: CameraDevice) -> Tuple[np.ndarray, np.dtype]:
     ``alpaca.camera``'s Int32 reconstruction bug on 64-bit macOS/Linux (it uses
     ``array.array('l')``, which is 8 bytes there rather than the assumed 4).
     """
+    from alpyca_tools.camera_ops import download_image
+
     data, _info, dtype = download_image(c)
     return data, dtype
 
@@ -259,6 +262,8 @@ def _build_header(c: CameraDevice, cfg: CaptureConfig, data_dtype: np.dtype, sha
 
 
 def capture_fits(cfg: CaptureConfig, out_file: Union[str, Path]) -> Path:
+    from alpyca_tools.camera_device import CameraDevice
+
     out_path = Path(out_file).expanduser().resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
 

@@ -43,6 +43,12 @@ def test_efficiency():
     assert q == pytest.approx(0.05, abs=1e-9)
 
 
+@pytest.mark.parametrize("bad", [0.0, -1.0, np.nan, np.inf])
+def test_invalid_efficiency_fails_closed(bad):
+    with pytest.raises(ValueError, match="finite and positive"):
+        cal.apply_efficiency(0.01, 0.02, bad)
+
+
 def test_polcalibration_bundle_roundtrip():
     """A full PolCalibration inverts injected IP+PA+efficiency."""
     q0, u0, dtheta, eff = 0.003, -0.002, 7.0, 0.95

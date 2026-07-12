@@ -96,8 +96,10 @@ def fit_efficiency(
 
 def apply_efficiency(q: float, u: float, efficiency: float) -> Tuple[float, float]:
     """Divide the polarization vector by the modulation efficiency."""
-    if efficiency == 0:
-        return q, u
+    if not np.isfinite(efficiency) or efficiency <= 0:
+        raise ValueError(
+            f"efficiency must be finite and positive; got {efficiency!r}"
+        )
     return q / efficiency, u / efficiency
 
 

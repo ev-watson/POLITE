@@ -33,6 +33,10 @@ def test_sequence_writes_all_angles_and_groups(cfg, rng, tmp_path):
     assert set(groups.keys()) == set(round(a, 3) for a in cfg.hwp_angles_deg)
     seq = pt.group_pol_sequence([str(p) for p in paths])
     assert list(seq.keys()) == sorted(cfg.hwp_angles_deg)
+    assert all(len(group) == 1 for group in seq.values())
+
+    repeated = pt.group_pol_sequence([str(paths[0]), str(paths[0])])
+    assert len(repeated[cfg.hwp_angles_deg[0]]) == 2
 
 
 def test_missing_hwpang_raises_named_error(tmp_path):
@@ -70,3 +74,34 @@ def test_render_saturation_clip(cfg, rng):
     # core pixels pinned near the full-well plateau (within Poisson/read noise)
     assert frame.max() >= 0.98 * sat_adu
     assert (frame > 0.98 * sat_adu).sum() > 5   # a saturated core exists
+
+
+def test_sidecar_roundtrip_preserves_measured_beam_geometry(tmp_path):
+    det = pt.SessionDetectorConfig(
+        beam_separation_px=239.5,
+        beam_position_angle_deg=328.2,
+        beam_geometry_characterized=True,
+    )
+    sidecar = pt.write_pol_config_sidecar(
+        tmp_path / "pol_config.yaml", det, session_id="TEST"
+    )
+    cfg = pt.load_pol_config_sidecar(sidecar, filter_name="Photometric V")
+    assert cfg.beam.separation_px == pytest.approx(239.5)
+    assert cfg.beam.position_angle_deg == pytest.approx(328.2)
+    assert cfg.active_filter().characterized is True
+
+
+def test_fits_header_beam_geometry_is_characterized(tmp_path):
+    data = np.zeros((32, 48), dtype=np.uint16)
+    header = fits.Header({
+        "FILTER": "Photometric V",
+        "BEAMSEP": 239.5,
+        "BEAMPA": 328.2,
+        "EGAIN": 1.0,
+    })
+    path = tmp_path / "geometry.fits"
+    fits.PrimaryHDU(data, header=header).writeto(path)
+    cfg = pt.polconfig_from_fits_headers(path)
+    assert cfg.beam.separation_px == pytest.approx(239.5)
+    assert cfg.beam.position_angle_deg == pytest.approx(328.2)
+    assert cfg.active_filter().characterized is True

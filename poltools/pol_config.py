@@ -36,6 +36,8 @@ class SessionDetectorConfig:
     nx: int = 6280
     ny: int = 4210
     beam_separation_px: float = 60.0
+    beam_position_angle_deg: float = 0.0
+    beam_geometry_characterized: bool = False
 
 
 def _detector_from_mapping(det: Dict[str, Any]) -> SessionDetectorConfig:
@@ -53,6 +55,10 @@ def _detector_from_mapping(det: Dict[str, Any]) -> SessionDetectorConfig:
         nx=int(det.get("nx", 6280)),
         ny=int(det.get("ny", 4210)),
         beam_separation_px=float(det.get("beam_separation_px", 60.0)),
+        beam_position_angle_deg=float(det.get("beam_position_angle_deg", 0.0)),
+        beam_geometry_characterized=bool(
+            det.get("beam_geometry_characterized", False)
+        ),
     )
 
 
@@ -74,10 +80,17 @@ def polconfig_from_detector(
         bitdepth=16,
         sensor_name=det.sensor_name,
     )
-    filters = default_efw_filters(separation_px=det.beam_separation_px)
+    filters = default_efw_filters(
+        separation_px=det.beam_separation_px,
+        position_angle_deg=det.beam_position_angle_deg,
+        characterized=det.beam_geometry_characterized,
+    )
     cfg = PolConfig(
         sensor=sensor,
-        beam=BeamGeometry(separation_px=det.beam_separation_px),
+        beam=BeamGeometry(
+            separation_px=det.beam_separation_px,
+            position_angle_deg=det.beam_position_angle_deg,
+        ),
         plate_scale_arcsec=det.plate_scale_arcsec,
         hwp_angles_deg=tuple(float(a) for a in angles),
         instrument_rotator_deg=instrument_rotator_deg,
@@ -164,6 +177,9 @@ def polconfig_from_fits_headers(
         sensor_name=str(hdr.get("INSTRUME", "QHY268M")),
         nx=int(hdr.get("NAXIS1", 6280)),
         ny=int(hdr.get("NAXIS2", 4210)),
+        beam_separation_px=float(hdr.get("BEAMSEP", 60.0)),
+        beam_position_angle_deg=float(hdr.get("BEAMPA", 0.0)),
+        beam_geometry_characterized="BEAMSEP" in hdr and "BEAMPA" in hdr,
     )
     instrot = float(hdr["INSTROT"]) if "INSTROT" in hdr else 0.0
     return polconfig_from_detector(det, fname, instrument_rotator_deg=instrot)
@@ -180,4 +196,9 @@ def polconfig_snapshot(cfg: PolConfig) -> Dict[str, Any]:
         "plate_scale_arcsec": cfg.plate_scale_arcsec,
         "instrument_rotator_deg": cfg.instrument_rotator_deg,
         "retardance_deg": cfg.retardance_deg,
+        "beam_separation_px": cfg.beam.separation_px,
+        "beam_position_angle_deg": cfg.beam.position_angle_deg,
+        "beam_geometry_characterized": bool(
+            cfg.active_filter() is not None and cfg.active_filter().characterized
+        ),
     }

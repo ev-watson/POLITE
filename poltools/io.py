@@ -147,14 +147,32 @@ def group_by_filter(paths: List[Union[str, Path]]) -> Dict[str, List[str]]:
     return {k: sorted(v) for k, v in groups.items()}
 
 
-def group_pol_sequence(paths: List[Union[str, Path]]) -> "OrderedDict[float, str]":
-    """Order frames of one sequence by HWP angle."""
-    pairs = []
+def group_pol_sequence(
+    paths: List[Union[str, Path]],
+) -> "OrderedDict[float, List[str]]":
+    """Order one sequence by HWP angle without dropping repeat frames."""
+    groups = group_by_hwp_angle(paths)
+    return OrderedDict((angle, groups[angle]) for angle in sorted(groups))
+
+
+def group_by_pol_sequence(
+    paths: List[Union[str, Path]],
+) -> Dict[Tuple[str, str, str], List[str]]:
+    """Group paths by ``(OBJECT, POLSEQ, FILTER)`` provenance.
+
+    Missing ``POLSEQ`` is represented explicitly as ``"UNKNOWN"`` so callers
+    cannot accidentally merge unrelated unlabelled observations.
+    """
+    groups: Dict[Tuple[str, str, str], List[str]] = defaultdict(list)
     for p in paths:
-        hdr = fits.getheader(str(p))
-        pairs.append((_read_hwp_angle(hdr, p), str(p)))
-    pairs.sort(key=lambda t: t[0])
-    return OrderedDict(pairs)
+        hdr = fits.getheader(str(p), ignore_missing_end=True)
+        key = (
+            str(hdr.get("OBJECT", "UNKNOWN")),
+            str(hdr.get("POLSEQ", "UNKNOWN")),
+            str(hdr.get("FILTER", "UNKNOWN")),
+        )
+        groups[key].append(str(p))
+    return {key: sorted(values) for key, values in groups.items()}
 
 
 def load_pol_config_sidecar(path: Union[str, Path], *, filter_name: Optional[str] = None) -> PolConfig:

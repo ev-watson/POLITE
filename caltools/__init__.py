@@ -36,6 +36,7 @@ from .noise import (
     dsnu,
     fpn,
     read_noise_map,
+    read_noise_map_from_paths,
     read_noise_spatial,
     row_column_noise,
 )
@@ -88,6 +89,7 @@ __all__ = [
     "outlier_mask",
     "sigma_vs_mean_2d",
     "read_noise_map",
+    "read_noise_map_from_paths",
     "read_noise_spatial",
     "row_column_noise",
     "dsnu",

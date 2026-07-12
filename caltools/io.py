@@ -11,6 +11,7 @@ import os
 import re
 import warnings
 from collections import defaultdict
+from contextlib import ExitStack
 from typing import Dict, Generator, List, Optional, Tuple
 
 import numpy as np
@@ -96,18 +97,55 @@ def load_cube_chunked(
     dtype : type
         Output dtype.
     """
-    first = load_frame(paths[0], roi=roi, dtype=dtype)
-    ny, nx = first.shape
+    if not paths:
+        raise ValueError("paths must contain at least one FITS frame")
+    if chunk_rows <= 0:
+        raise ValueError(f"chunk_rows must be positive; got {chunk_rows}")
+
+    header = fits.getheader(paths[0])
+    full_ny = int(header["NAXIS2"])
+    full_nx = int(header["NAXIS1"])
+    row_sel, col_sel = roi or (slice(None), slice(None))
+    rows = np.arange(full_ny)[row_sel]
+    cols = np.arange(full_nx)[col_sel]
+    ny, nx = len(rows), len(cols)
     n = len(paths)
 
-    for r0 in range(0, ny, chunk_rows):
-        r1 = min(r0 + chunk_rows, ny)
-        row_sl = slice(r0, r1)
-        chunk = np.empty((n, r1 - r0, nx), dtype=dtype)
-        for i, p in enumerate(paths):
-            frame = load_frame(p, roi=roi, dtype=dtype)
-            chunk[i] = frame[row_sl, :]
-        yield row_sl, chunk
+    # Open every input once.  ``do_not_scale_image_data`` keeps uint16 FITS
+    # (BITPIX=16, BZERO=32768) memory-mappable; scaling is applied only to each
+    # requested strip below.  The previous implementation loaded every entire
+    # 50 MB frame once per strip, turning a 25-frame master bias into ~100 GB of
+    # avoidable I/O.
+    with ExitStack() as stack:
+        hdus = [
+            stack.enter_context(
+                fits.open(p, memmap=True, do_not_scale_image_data=True)
+            )[0]
+            for p in paths
+        ]
+        for p, hdu in zip(paths, hdus):
+            if hdu.data is None or hdu.data.shape != (full_ny, full_nx):
+                shape = None if hdu.data is None else hdu.data.shape
+                raise ValueError(
+                    f"{p}: frame shape {shape} != ({full_ny}, {full_nx})"
+                )
+
+        for r0 in range(0, ny, chunk_rows):
+            r1 = min(r0 + chunk_rows, ny)
+            row_sl = slice(r0, r1)
+            row_idx = rows[row_sl]
+            chunk = np.empty((n, r1 - r0, nx), dtype=dtype)
+            selector = np.ix_(row_idx, cols)
+            for i, hdu in enumerate(hdus):
+                raw = np.asarray(hdu.data[selector], dtype=dtype)
+                bscale = float(hdu.header.get("BSCALE", 1.0))
+                bzero = float(hdu.header.get("BZERO", 0.0))
+                if bscale != 1.0:
+                    raw *= bscale
+                if bzero != 0.0:
+                    raw += bzero
+                chunk[i] = raw
+            yield row_sl, chunk
 
 
 def sensor_config_from_header(
@@ -166,6 +204,8 @@ def sensor_config_from_header(
 
 def group_by_type_and_exposure(
     paths: List[str],
+    *,
+    exposure_decimals: int = 6,
 ) -> Dict[Tuple[str, float], List[str]]:
     """Group FITS files by image type and exposure time.
 
@@ -187,6 +227,12 @@ def group_by_type_and_exposure(
             hdr = fits.getheader(p)
             itype = str(hdr.get("IMAGETYP", "Unknown"))
             exp = float(hdr.get("EXPTIME", 0.0))
+        # Camera APIs often return binary-floating artifacts such as
+        # 0.2000000000109 s.  Canonicalizing at microsecond precision prevents
+        # one requested exposure from fragmenting into several calibration
+        # groups while retaining real millisecond-level differences (0.050 vs
+        # 0.051 s).
+        exp = round(exp, exposure_decimals)
         groups[(itype, exp)].append(p)
 
     return {k: sorted(v) for k, v in groups.items()}

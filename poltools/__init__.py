@@ -43,6 +43,7 @@ from .simulate import make_scene, render_frame, simulate_sequence
 from .io import (
     group_by_filter,
     group_by_hwp_angle,
+    group_by_pol_sequence,
     group_pol_sequence,
     load_pol_config_sidecar,
     read_pol_frame,
@@ -84,7 +85,7 @@ from .calibration import (
     fit_instrumental_polarization,
     fit_pa_zeropoint,
 )
-from .pipeline import reduce_to_stokes
+from .pipeline import reduce_pol_sequences, reduce_to_stokes
 
 __all__ = [
     "__version__",
@@ -94,6 +95,7 @@ __all__ = [
     "system_mueller", "oe_intensities",
     "render_frame", "simulate_sequence", "make_scene",
     "write_pol_fits", "read_pol_frame", "group_by_hwp_angle", "group_by_filter",
+    "group_by_pol_sequence",
     "group_pol_sequence", "load_pol_config_sidecar", "write_pol_config_sidecar",
     "SessionDetectorConfig", "polconfig_from_detector", "polconfig_from_fits_headers",
     "polconfig_snapshot",
@@ -105,5 +107,5 @@ __all__ = [
     "sigma_theta_highsnr", "sigma_theta_nkc",
     "PolCalibration", "fit_instrumental_polarization", "fit_pa_zeropoint",
     "fit_efficiency",
-    "reduce_to_stokes",
+    "reduce_to_stokes", "reduce_pol_sequences",
 ]

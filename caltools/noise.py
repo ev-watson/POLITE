@@ -18,7 +18,8 @@ import numpy as np
 from scipy.fft import rfft, rfftfreq
 
 from ._types import AnalysisResult, Frame, FrameCube, ROI, SensorConfig
-from .stats import WelfordAccumulator, mad_sigma, outlier_mask
+from .io import load_cube_chunked, load_frame
+from .stats import WelfordAccumulator, mad_sigma
 
 
 def read_noise_map(
@@ -63,6 +64,38 @@ def read_noise_map(
     temporal_std = np.std(cube, axis=0, dtype=np.float64)
 
     return rn_map.astype(np.float32), temporal_std.astype(np.float32)
+
+
+def read_noise_map_from_paths(
+    paths: List[str],
+    *,
+    chunk_rows: int = 50,
+    roi: Optional[ROI] = None,
+) -> Tuple[Frame, Frame]:
+    """Compute read-noise maps from FITS paths without a full-frame cube.
+
+    This is the path-based equivalent of ``read_noise_map(...,
+    method="frame_diff")``.  Only ``n_frames × chunk_rows × n_columns`` values
+    are resident at once, which keeps a full QHY268M bias stack practical.
+    Returned maps remain in detector units (normally ADU).
+    """
+    if len(paths) < 2:
+        raise ValueError("read_noise_map_from_paths requires at least two frames")
+
+    first = load_frame(paths[0], roi=roi)
+    rn_map = np.empty(first.shape, dtype=np.float32)
+    temporal_std = np.empty(first.shape, dtype=np.float32)
+    for row_sl, cube in load_cube_chunked(
+        paths, chunk_rows=chunk_rows, roi=roi, dtype=np.float32
+    ):
+        diffs = np.diff(cube.astype(np.float64), axis=0)
+        rn_map[row_sl, :] = (
+            np.std(diffs, axis=0, ddof=0) / np.sqrt(2.0)
+        ).astype(np.float32)
+        temporal_std[row_sl, :] = np.std(
+            cube, axis=0, dtype=np.float64, ddof=0
+        ).astype(np.float32)
+    return rn_map, temporal_std
 
 
 def read_noise_spatial(

@@ -92,7 +92,8 @@ class FilterConfig:
 
 
 def default_efw_filters(separation_px: float = 60.0,
-                        position_angle_deg: float = 0.0) -> Tuple[FilterConfig, ...]:
+                        position_angle_deg: float = 0.0,
+                        characterized: bool = False) -> Tuple[FilterConfig, ...]:
     """Default POLITE ZWO 5-slot filter wheel with placeholder geometry.
 
     ``beam`` is identical in every slot until measured per band from flat
@@ -102,11 +103,16 @@ def default_efw_filters(separation_px: float = 60.0,
     bg = BeamGeometry(separation_px=separation_px,
                       position_angle_deg=position_angle_deg)
     return (
-        FilterConfig("Photometric B", bg, eff_wavelength_nm=440.0),
-        FilterConfig("Photometric V", bg, eff_wavelength_nm=551.0),
-        FilterConfig("Photometric R", bg, eff_wavelength_nm=640.0),
-        FilterConfig("Clear", bg, eff_wavelength_nm=None),
-        FilterConfig("Dark", bg, eff_wavelength_nm=None, is_dark=True),
+        FilterConfig("Clear", bg, eff_wavelength_nm=None,
+                     characterized=characterized),
+        FilterConfig("Photometric B", bg, eff_wavelength_nm=440.0,
+                     characterized=characterized),
+        FilterConfig("Photometric V", bg, eff_wavelength_nm=551.0,
+                     characterized=characterized),
+        FilterConfig("Photometric R", bg, eff_wavelength_nm=640.0,
+                     characterized=characterized),
+        FilterConfig("Dark", bg, eff_wavelength_nm=None, is_dark=True,
+                     characterized=characterized),
     )
 
 

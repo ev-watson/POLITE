@@ -5,11 +5,14 @@ import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Union
 
 import numpy as np
 from astropy.io import fits
 from astropy.stats import sigma_clipped_stats
+
+if TYPE_CHECKING:
+    from poltools import PolConfig
 
 logger = logging.getLogger(__name__)
 
@@ -179,7 +182,6 @@ def run_sequence_audit(
         key = (hdr.get("OBJECT"), hdr.get("POLSEQ"), hdr.get("FILTER"))
         groups[key].add(float(hdr["HWPANG"]))
 
-    expected = expected_angles or {}
     msgs: List[str] = []
     incomplete: List[Dict[str, Any]] = []
 
@@ -187,10 +189,17 @@ def run_sequence_audit(
         obj, polseq, filt = key
         n = len(angs)
         exp_n = None
+        if expected_angles:
+            if polseq in expected_angles:
+                exp_n = int(expected_angles[polseq])
+            elif obj in expected_angles:
+                exp_n = int(expected_angles[obj])
         if polseq and isinstance(polseq, str):
-            if "16" in polseq or "polV16" in polseq:
+            if exp_n is None and ("16" in polseq or "polV16" in polseq):
                 exp_n = 16
-            elif "8" in polseq or "polV8" in polseq or "polR8" in polseq:
+            elif exp_n is None and (
+                "8" in polseq or "polV8" in polseq or "polR8" in polseq
+            ):
                 exp_n = 8
         if exp_n is None:
             exp_n = 8 if n <= 8 else 16
@@ -246,6 +255,23 @@ def run_first_light_qa(
         return QAResult("first_light_qa", False, ["No FITS files matched"])
 
     filt = f"Photometric {band}"
+    selected: List[str] = []
+    for path in files:
+        hdr = fits.getheader(path, ignore_missing_end=True)
+        if str(hdr.get("IMAGETYP", "LIGHT")).upper() != "LIGHT":
+            continue
+        if str(hdr.get("FILTER", "")).strip() != filt:
+            continue
+        if str(hdr.get("OBJECT", "")).strip().casefold() != ref_name.casefold():
+            continue
+        selected.append(path)
+    if not selected:
+        return QAResult(
+            "first_light_qa", False,
+            [f"No LIGHT frames for OBJECT={ref_name!r}, FILTER={filt!r}"],
+        )
+    files = selected
+
     try:
         cfg = _load_pol_config(files, pol_config_path=pol_config_path, filter_name=filt)
     except FileNotFoundError as exc:

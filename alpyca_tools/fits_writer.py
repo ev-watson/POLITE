@@ -8,10 +8,9 @@ import numpy as np
 from astropy.io import fits
 
 if TYPE_CHECKING:
+    from .camera_device import CameraDevice
+    from .camera_ops import ExposureSettings
     from obs_utils.timing import FilterWheelState, TimingProvenance
-
-from .camera_device import CameraDevice
-from .camera_ops import ExposureSettings, capture_image
 
 
 @dataclass
@@ -217,6 +216,8 @@ def capture_fits(
     poll_s: float = 0.5,
     timeout_s: float = 300.0,
 ) -> Path:
+    from .camera_ops import capture_image
+
     data, _info, dtype = capture_image(
         camera,
         exposure,

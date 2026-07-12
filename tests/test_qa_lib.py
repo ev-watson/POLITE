@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 from astropy.io import fits
 
-from obs_utils.qa_lib import QAResult, run_bias_qa
+from obs_utils.qa_lib import QAResult, run_bias_qa, run_sequence_audit
 
 
 def _write_bias(tmp_path, n=4, level=300.0, ron_adu=3.5, egain=1.0,
@@ -57,3 +57,23 @@ def test_bias_qa_few_pinned_pixels_warn_not_fail(tmp_path):
     r = run_bias_qa([tmp_path], ron_target_e=3.5, ron_tol_e=0.5)
     assert r.passed
     assert r.level == "WARN"
+
+
+def test_sequence_audit_honors_explicit_expected_angle_override(tmp_path):
+    for i, angle in enumerate((0.0, 22.5, 45.0, 67.5)):
+        header = fits.Header({
+            "IMAGETYP": "LIGHT",
+            "OBJECT": "standard",
+            "POLSEQ": "custom_sequence",
+            "FILTER": "Photometric V",
+            "HWPANG": angle,
+        })
+        fits.PrimaryHDU(np.zeros((4, 4)), header).writeto(
+            tmp_path / f"frame_{i}.fits"
+        )
+    default = run_sequence_audit(tmp_path)
+    override = run_sequence_audit(
+        tmp_path, expected_angles={"custom_sequence": 4}
+    )
+    assert not default.passed
+    assert override.passed

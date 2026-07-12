@@ -13,7 +13,7 @@ The instrument is a dual-beam imaging polarimeter (rotating HWP + α-BBO Savart 
 
 ```
 Sky → PlaneWave CDK20 → PWI4 Focuser/Rotator → Astronomik L3 UV/IR-cut
-    → rotating Half-Wave Plate → ZWO 5-slot EFW (Photometric B, V, R, Clear, Dark)
+    → rotating Half-Wave Plate → ZWO 5-slot EFW (Clear, Photometric B, V, R, Dark)
     → α-BBO Savart plate (18 mm) → QHY268M (IMX571)
 ```
 
@@ -108,7 +108,7 @@ import caltools as ct
 
 config = ct.sensor_config_from_header("frame.fit", gain=0.5)
 bias = ct.master_bias(bias_paths)
-rn_map, ts_map = ct.read_noise_map(bias_cube)
+rn_map, ts_map = ct.read_noise_map_from_paths(bias_paths)
 ptc = ct.photon_transfer_curve(flat_groups, bias, config)
 ```
 
@@ -118,6 +118,18 @@ Polarimetry reduction:
 import poltools as pt
 
 results = pt.reduce_to_stokes(frame_paths, cfg, o_positions=positions, method="lsq")
+
+# A directory containing multiple targets/repeats/rotations must be reduced by
+# provenance group; reduce_to_stokes fails closed on accidental mixing.
+by_sequence = pt.reduce_pol_sequences(frame_paths, cfg, o_positions=positions)
+```
+
+Salvage first-light diagnostics (raw FITS are never edited; products remain
+provisional under `generated/`):
+
+```bash
+python scripts/analyze_salvage_first_light.py FITSDATA/20260709
+python scripts/reduce_salvage_drift_sequence.py FITSDATA/20260709
 ```
 
 ## Requirements

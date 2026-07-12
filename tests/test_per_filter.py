@@ -43,8 +43,8 @@ def _cfg_two_bands(sensor):
 def test_default_efw_filters_slots():
     fs = pt.default_efw_filters(60.0)
     names = [f.name for f in fs]
-    assert names == ["Photometric B", "Photometric V", "Photometric R",
-                     "Clear", "Dark"]
+    assert names == ["Clear", "Photometric B", "Photometric V",
+                     "Photometric R", "Dark"]
     dark = [f for f in fs if f.name == "Dark"][0]
     assert dark.is_dark is True
     # placeholders until measured from data

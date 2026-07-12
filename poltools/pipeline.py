@@ -94,6 +94,7 @@ def reduce_to_stokes(
     threshold_sigma: float = 5.0,
     seeing_arcsec: float = 2.0,
     exclude_regions: Optional[Sequence[Tuple[float, float, float, float]]] = None,
+    allow_mixed_sequences: bool = False,
 ) -> List[StokesResult]:
     """Reduce a half-wave plate sequence to per-source Stokes results.
 
@@ -129,6 +130,10 @@ def reduce_to_stokes(
         Mask of hot or bad pixels (True = bad); filled locally before photometry.
     exclude_regions : list of (x0, y0, x1, y1), optional
         Rectangular detector areas to skip (e.g. a vignetted Savart corner).
+    allow_mixed_sequences : bool
+        Permit intentional stacking across different ``OBJECT/POLSEQ`` values.
+        False by default because mixing targets, repeats, or instrument rotations
+        silently destroys their provenance.
     """
     reducers = {
         "lsq": mod.lsq_modulation,
@@ -141,6 +146,18 @@ def reduce_to_stokes(
             f"Unknown method {method!r} (use {', '.join(sorted(reducers))})"
         )
     reduce_fn = reducers[m]
+
+    sequence_groups = pol_io.group_by_pol_sequence(list(frame_paths))
+    sequence_ids = {(obj, seq) for (obj, seq, _band) in sequence_groups}
+    if len(sequence_ids) > 1 and not allow_mixed_sequences:
+        detail = ", ".join(
+            f"{obj!r}/{seq!r}" for obj, seq in sorted(sequence_ids)
+        )
+        raise ValueError(
+            "frame_paths contain multiple OBJECT/POLSEQ sequences: "
+            f"{detail}. Reduce each sequence separately or pass "
+            "allow_mixed_sequences=True only for intentional repeat stacks."
+        )
 
     by_filter = pol_io.group_by_filter(list(frame_paths))
 
@@ -169,6 +186,15 @@ def reduce_to_stokes(
         if o_pos is None:
             if not detect:
                 raise ValueError("Provide o_positions or set detect=True")
+            active_filter = cfg_b.active_filter()
+            if active_filter is not None and not active_filter.characterized:
+                warnings.warn(
+                    f"filter {band!r}: beam geometry is an uncharacterized "
+                    f"placeholder (separation={cfg_b.beam.separation_px:.2f} px, "
+                    f"PA={cfg_b.beam.position_angle_deg:.2f} deg); automatic "
+                    "o/e pairing may fail or mis-pair sources",
+                    stacklevel=2,
+                )
             fwhm = fwhm_px if fwhm_px is not None else cfg_b.fwhm_px(seeing_arcsec)
             ref = frames_by_angle[sorted(frames_by_angle)[0]]
             det = phot.detect_sources(ref, fwhm, threshold_sigma=threshold_sigma)
@@ -233,3 +259,16 @@ def reduce_to_stokes(
         cfg_b = _config_for_filter(cfg, band)
         results.extend(_reduce_band(by_filter[band], cfg_b, band))
     return results
+
+
+def reduce_pol_sequences(
+    frame_paths: Sequence[str],
+    cfg: PolConfig,
+    **kwargs,
+) -> Dict[Tuple[str, str, str], List[StokesResult]]:
+    """Reduce each ``(OBJECT, POLSEQ, FILTER)`` group independently."""
+    groups = pol_io.group_by_pol_sequence(list(frame_paths))
+    return {
+        key: reduce_to_stokes(paths, cfg, **kwargs)
+        for key, paths in groups.items()
+    }

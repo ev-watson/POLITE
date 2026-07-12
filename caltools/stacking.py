@@ -11,7 +11,20 @@ from typing import List, Optional
 import numpy as np
 
 from ._types import Frame, ROI
-from .io import load_cube, load_cube_chunked, load_frame
+from .io import load_cube_chunked, load_frame
+
+
+def _reducer(method: str):
+    if method == "median":
+        return np.median
+    if method == "mean":
+        return np.mean
+    raise ValueError(f"method must be 'median' or 'mean'; got {method!r}")
+
+
+def _require_paths(paths: List[str]) -> None:
+    if not paths:
+        raise ValueError("paths must contain at least one FITS frame")
 
 
 def master_bias(
@@ -36,7 +49,8 @@ def master_bias(
     roi : ROI, optional
         Restrict to a sub-region.
     """
-    reduce_fn = np.median if method == "median" else np.mean
+    _require_paths(paths)
+    reduce_fn = _reducer(method)
 
     first = load_frame(paths[0], roi=roi)
     ny, nx = first.shape
@@ -70,7 +84,8 @@ def master_dark(
     roi : ROI, optional
         Restrict to a sub-region.
     """
-    reduce_fn = np.median if method == "median" else np.mean
+    _require_paths(paths)
+    reduce_fn = _reducer(method)
 
     first = load_frame(paths[0], roi=roi)
     ny, nx = first.shape
@@ -123,18 +138,29 @@ def master_flat(
     roi : ROI, optional
         Restrict to a sub-region.
     """
-    reduce_fn = np.median if method == "median" else np.mean
+    _require_paths(paths)
+    reduce_fn = _reducer(method)
 
     first = load_frame(paths[0], roi=roi)
     ny, nx = first.shape
 
     bias_use = bias
-    if bias.shape != (ny, nx) and roi is not None:
-        bias_use = bias[roi[0], roi[1]]
+    if bias.shape != (ny, nx):
+        if roi is not None:
+            bias_use = bias[roi[0], roi[1]]
+        if bias_use.shape != (ny, nx):
+            raise ValueError(
+                f"Bias shape {bias_use.shape} != frame shape ({ny}, {nx})"
+            )
 
     dark_use = dark
-    if dark is not None and dark.shape != (ny, nx) and roi is not None:
-        dark_use = dark[roi[0], roi[1]]
+    if dark is not None and dark.shape != (ny, nx):
+        if roi is not None:
+            dark_use = dark[roi[0], roi[1]]
+        if dark_use.shape != (ny, nx):
+            raise ValueError(
+                f"Dark shape {dark_use.shape} != frame shape ({ny}, {nx})"
+            )
 
     master = np.empty((ny, nx), dtype=np.float32)
 
@@ -148,7 +174,11 @@ def master_flat(
 
     if normalize:
         med = np.median(master)
-        if med > 0:
-            master /= med
+        if not np.isfinite(med) or med <= 0:
+            raise ValueError(
+                "Cannot normalize master flat: calibrated median signal is "
+                f"{med:.6g} ADU (must be finite and positive)"
+            )
+        master /= med
 
     return master
