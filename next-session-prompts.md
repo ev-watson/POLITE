@@ -10,7 +10,7 @@ from cloudy twilight). **Must be committed+pushed before the obs PC can pull.**
 
 **What to do (observatory PC):**
 1. `git pull`, then follow `20260717_calibration_night_checklist.md` top to
-   bottom (pre-flight → dry-runs → darkcal @ 0/−10/−20 °C → PTC twilight
+   bottom (pre-flight → dry-runs → darkcal @ 0/−10/−15 °C → PTC twilight
    sweeps ×3 in the 19:50–20:40 PDT window).
 2. Runner: `scripts/run_calibration_night.py <plan> --run [--setpoint T]`.
    It prints+logs every setting read back from hardware and gates on cooler

@@ -30,7 +30,7 @@ class SessionDetectorConfig:
     offset: int = 0
     egain_e_per_adu: float = 1.0
     ron_e: float = 3.5
-    cooler_setpoint_c: float = -10.0
+    cooler_setpoint_c: float = -15.0
     pixel_size_um: float = 3.76
     plate_scale_arcsec: float = 0.224
     sensor_name: str = "QHY268M"
@@ -49,7 +49,7 @@ def _detector_from_mapping(det: Dict[str, Any]) -> SessionDetectorConfig:
         offset=int(det.get("offset", 0)),
         egain_e_per_adu=float(det.get("egain_e_per_adu", 1.0)),
         ron_e=float(det.get("ron_e", 3.5)),
-        cooler_setpoint_c=float(det.get("cooler_setpoint_c", -10.0)),
+        cooler_setpoint_c=float(det.get("cooler_setpoint_c", -15.0)),
         pixel_size_um=float(det.get("pixel_size_um", 3.76)),
         plate_scale_arcsec=float(det.get("plate_scale_arcsec", 0.224)),
         sensor_name=str(det.get("sensor_name", "QHY268M")),

@@ -64,6 +64,7 @@ from obs_utils.night_session import (
 )
 from obs_utils.night_display import NightReporter, total_frame_count
 from obs_utils import interactive
+from obs_utils.timing import acquire_session_timing_snapshot
 
 logger = logging.getLogger("calnight")
 
@@ -343,8 +344,21 @@ def run(config, plan_path: Path, args) -> int:
 
     _verify_filter_wheel(imaging, skip=args.skip_filter_check)
 
+    # Match the normal night runner's per-session timing provenance without
+    # calling mount startup. DATE-OBS itself comes from the QHY server per
+    # exposure; this snapshot documents Windows clock discipline on every FITS.
+    ntp_status = acquire_session_timing_snapshot(config.startup.timing)
+    logger.info(
+        "Timing snapshot: %s TIMEUNC=%.3f s ref=%s offset=%s sync_age=%s",
+        ntp_status.timesrc, ntp_status.timeunc_s, ntp_status.timeref or "n/a",
+        ntp_status.ntpoffs_s, ntp_status.ntpage_s,
+    )
+    for warning in ntp_status.warnings:
+        logger.warning("Timing: %s", warning)
+
     # --- apply plan settings, read them back, verify, and log ----------------
-    _apply_session_camera(imaging, ctx)
+    ctx = _apply_session_camera(imaging, ctx)
+    config = dc_replace(config, capture_context=ctx)
     _report_settings(imaging, ctx, skip_check=args.skip_settings_check)
 
     # --- cooler stabilization gate -------------------------------------------
@@ -362,7 +376,7 @@ def run(config, plan_path: Path, args) -> int:
         _report_settings(imaging, ctx, skip_check=True)  # re-log post-stabilization state
 
     # --- capture via the tested night_session path ---------------------------
-    state = SimpleNamespace(imaging=imaging, pwi4=None, ntp_status=None)
+    state = SimpleNamespace(imaging=imaging, pwi4=None, ntp_status=ntp_status)
     block_log: list = []
     session_id = config.session_name or base_dir.name
 
@@ -399,7 +413,7 @@ def run(config, plan_path: Path, args) -> int:
             reporter.start_block(target.name, subtitle=f"{total_frame_count(target.frames)} frames")
             _run_frames(
                 imaging, None, target.frames, out_dir, target, config,
-                ntp_status=None, date_str=polite_date,
+                ntp_status=ntp_status, date_str=polite_date,
                 block_log=block_log, block_id=target.name, reporter=reporter,
             )
             _flush()
@@ -435,12 +449,12 @@ def main() -> int:
     p.add_argument("--no-cooler-wait", action="store_true",
                    help="Skip the cooler stabilization gate (twilight blocks: sky "
                         "is time-critical; CCD-TEMP is recorded per frame)")
-    p.add_argument("--cooler-tol", type=float, default=0.5,
-                   help="Stabilization tolerance [C] (default 0.5)")
+    p.add_argument("--cooler-tol", type=float, default=0.2,
+                   help="Stabilization tolerance [C] (default 0.2)")
     p.add_argument("--cooler-stable-s", type=float, default=30.0,
                    help="Required continuous in-tolerance time [s] (default 30)")
-    p.add_argument("--cooler-timeout", type=float, default=1500.0,
-                   help="Stabilization timeout [s] before prompting (default 1500)")
+    p.add_argument("--cooler-timeout", type=float, default=600.0,
+                   help="Stabilization timeout [s] before prompting (default 600)")
     p.add_argument("--cooler-poll", type=float, default=15.0,
                    help="Cooler poll interval [s] (default 15)")
     p.add_argument("--skip-filter-check", action="store_true",

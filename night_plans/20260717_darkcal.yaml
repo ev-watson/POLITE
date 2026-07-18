@@ -10,7 +10,7 @@
 #   scripts/run_calibration_night.py night_plans/20260717_darkcal.yaml                 # dry-run
 #   scripts/run_calibration_night.py night_plans/20260717_darkcal.yaml --run --setpoint 0
 #   scripts/run_calibration_night.py night_plans/20260717_darkcal.yaml --run --setpoint -10
-#   scripts/run_calibration_night.py night_plans/20260717_darkcal.yaml --run --setpoint -20
+#   scripts/run_calibration_night.py night_plans/20260717_darkcal.yaml --run --setpoint -15
 # The runner: prints+logs every camera/EFW setting read BACK from hardware,
 # sets the cooler once, then waits read-only for it to stabilize (on timeout
 # you may continue at the achieved temperature -- per-frame CCD-TEMP is
@@ -20,7 +20,7 @@
 #
 # Deliverables (per Widenhorn et al. 2002 / EMVA 1288 dark characterization):
 #   - mean dark current vs exposure at each T (linear fit; 3 exposure points x5)
-#   - dark current vs temperature (>=3 setpoints -> doubling temperature)
+#   - dark current vs temperature (0/-10/-15 C: >=3 setpoints -> doubling temperature)
 #   - bias level, read noise, and bias stability vs temperature (25 bias/point)
 #   - hot-pixel census vs temperature
 # July-9 only produced an UPPER LIMIT because the cooler never reached -20 C;
@@ -49,7 +49,8 @@ camera:
   offset: 50
   egain_e_per_adu: 1.0
   ron_e: 3.5
-  cooler_setpoint_c: -10.0   # per-invocation override: --setpoint
+  cooler_setpoint_c: -15.0   # per-invocation override: --setpoint
+  cooler_policy: exact        # temperature-curve points must be commanded exactly
   pixel_size_um: 3.76
   plate_scale_arcsec: 0.224
 

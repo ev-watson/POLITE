@@ -9,7 +9,7 @@ devices:
     device_number: 0
     serial_number: 954e9347bc645f17e
     defaults:
-      temperature: -10
+      temperature: -15
       readout_mode: 0
       binning: 1
       gain: 0

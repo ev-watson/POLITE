@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
+import math
 import string
+import time
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -333,8 +335,14 @@ def _build_header_config(
     )
 
 
-def _apply_session_camera(session, ctx: SessionCaptureContext) -> None:
-    """Apply session-level gain/offset/readout/cooler from capture context."""
+def _apply_session_camera(session, ctx: SessionCaptureContext) -> SessionCaptureContext:
+    """Apply session settings and return the context with its effective setpoint.
+
+    ``exact`` is for a controlled temperature experiment: the requested target
+    is always sent. ``at_or_below`` is for normal science: if the connected
+    detector is already colder than the requested target, preserve that lower
+    temperature rather than warming it toward the nominal setpoint.
+    """
     camera = session.camera
     settings = ExposureSettings(
         exposure_s=0.0,
@@ -346,10 +354,124 @@ def _apply_session_camera(session, ctx: SessionCaptureContext) -> None:
     configure_camera(camera, settings)
     try:
         if getattr(camera, "CanSetCCDTemperature", False):
-            camera.SetCCDTemperature = float(ctx.cooler_setpoint_c)
-            logger.info("Cooler setpoint -> %.1f C", ctx.cooler_setpoint_c)
+            requested_c = float(ctx.cooler_setpoint_c)
+            effective_c = requested_c
+            if ctx.cooler_policy == "at_or_below":
+                try:
+                    current_c = float(camera.CCDTemperature)
+                except Exception:
+                    current_c = float("nan")
+                if math.isfinite(current_c) and current_c < requested_c:
+                    effective_c = current_c
+                    logger.info(
+                        "Cooler at %+.2f C, colder than requested %+.1f C; "
+                        "preserving the lower temperature.",
+                        current_c, requested_c,
+                    )
+            camera.SetCCDTemperature = effective_c
+            if effective_c == requested_c:
+                logger.info("Cooler setpoint -> %+.1f C (%s)", effective_c, ctx.cooler_policy)
+            else:
+                logger.info(
+                    "Cooler setpoint -> %+.2f C (at_or_below; requested %+.1f C)",
+                    effective_c, requested_c,
+                )
+            ctx = replace(ctx, cooler_setpoint_c=effective_c)
     except Exception:
         logger.warning("Could not set cooler setpoint", exc_info=True)
+    return ctx
+
+
+def _read_camera(camera, attr: str):
+    try:
+        return getattr(camera, attr)
+    except Exception:
+        return None
+
+
+def _verify_session_hardware(imaging, ctx: SessionCaptureContext, expected_filter_names) -> None:
+    """Fail closed when the commanded camera/EFW setup differs from the plan."""
+    camera = imaging.camera
+    mismatches = []
+    for label, commanded, actual in (
+        ("gain", ctx.gain_setting, _read_camera(camera, "Gain")),
+        ("offset", ctx.offset_setting, _read_camera(camera, "Offset")),
+        ("readout_mode", ctx.readout_mode, _read_camera(camera, "ReadoutMode")),
+    ):
+        if actual is not None and int(actual) != int(commanded):
+            mismatches.append(f"{label}: commanded {commanded}, camera reports {actual}")
+    if mismatches:
+        raise RuntimeError("Camera settings mismatch: " + "; ".join(mismatches))
+
+    wheel = imaging.filter_wheel
+    expected = [str(name) for name in (expected_filter_names or [])]
+    if wheel is not None and expected:
+        try:
+            live = [str(name) for name in wheel.Names]
+        except Exception:
+            live = []
+        if live and live != expected:
+            raise RuntimeError(
+                "EFW driver Names do not match the configured physical carousel: "
+                f"driver={live}, expected={expected}"
+            )
+        logger.info("EFW names verified: %s", live or expected)
+
+    logger.info(
+        "Camera settings verified: gain=%s offset=%s readout=%s cooler=%+.2f C (%s)",
+        ctx.gain_setting, ctx.offset_setting, ctx.readout_mode,
+        ctx.cooler_setpoint_c, ctx.cooler_policy,
+    )
+
+
+def wait_for_cooler(
+    camera,
+    setpoint_c: float,
+    *,
+    tolerance_c: float = 0.1,
+    stable_s: float = 30.0,
+    timeout_s: float = 600.0,
+    poll_s: float = 15.0,
+) -> float:
+    """Observe the QHY cooler until it is stably at the commanded setpoint.
+
+    The setpoint has already been issued once. This gate reads telemetry only,
+    leaving QHY's internal cooler PID in control. A normal science run aborts
+    on timeout rather than silently collecting data at an unknown temperature.
+    """
+    if not _read_camera(camera, "CanSetCCDTemperature"):
+        logger.warning("Camera cannot set temperature; skipping cooler gate.")
+        return float("nan")
+
+    logger.info(
+        "Waiting for %+.2f C (tol %.2f C, hold %.0f s, timeout %.0f s)",
+        setpoint_c, tolerance_c, stable_s, timeout_s,
+    )
+    started = time.monotonic()
+    stable_since = None
+    while True:
+        value = _read_camera(camera, "CCDTemperature")
+        temp_c = float(value) if value is not None else float("nan")
+        power = _read_camera(camera, "CoolerPower")
+        elapsed = time.monotonic() - started
+        logger.info(
+            "Cooler T=%+6.2f C target=%+.2f C power=%s%% elapsed=%4.0f s",
+            temp_c, setpoint_c, "n/a" if power is None else f"{float(power):.0f}", elapsed,
+        )
+        if math.isfinite(temp_c) and abs(temp_c - setpoint_c) <= tolerance_c:
+            if stable_since is None:
+                stable_since = time.monotonic()
+            elif time.monotonic() - stable_since >= stable_s:
+                logger.info("Cooler stable at %+.2f C", temp_c)
+                return temp_c
+        else:
+            stable_since = None
+        if elapsed >= timeout_s:
+            raise TimeoutError(
+                f"Cooler did not stabilize at {setpoint_c:+.2f} C within {timeout_s:.0f} s "
+                f"(last temperature {temp_c:+.2f} C)"
+            )
+        time.sleep(poll_s)
 
 
 def plan_total_frames(config: "NightSessionConfig") -> int:
@@ -624,7 +746,17 @@ def run_night_session(config: NightSessionConfig) -> None:
     state = startup_observatory(startup_cfg)
 
     if config.capture_context is not None:
-        _apply_session_camera(state.imaging, config.capture_context)
+        config.capture_context = _apply_session_camera(state.imaging, config.capture_context)
+        _verify_session_hardware(
+            state.imaging, config.capture_context, config.startup.alpaca.filter_names,
+        )
+        wait_for_cooler(
+            state.imaging.camera,
+            config.capture_context.cooler_setpoint_c,
+            tolerance_c=config.capture_context.cooler_tolerance_c,
+            stable_s=config.capture_context.cooler_stable_s,
+            timeout_s=config.capture_context.cooler_timeout_s,
+        )
 
     if state.log_paths is not None:
         date_dir = state.log_paths.date_dir.name

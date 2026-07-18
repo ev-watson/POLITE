@@ -22,9 +22,9 @@
 #
 # >>> HOW TO RUN <<<
 #   scripts/run_calibration_night.py night_plans/20260717_ptc_twilight.yaml                  # dry-run
-#   scripts/run_calibration_night.py night_plans/20260717_ptc_twilight.yaml --run --no-cooler-wait
-# --no-cooler-wait because twilight is time-critical; set --setpoint -20 earlier
-# so the sensor is already cold, or accept per-frame CCD-TEMP as truth.
+#   scripts/run_calibration_night.py night_plans/20260717_ptc_twilight.yaml --run
+# The normal cooler gate is safe: the target is −15 C, or the current detector
+# temperature when it is already colder (at_or_below policy).
 # CONSOLE TUNE before the first sweep: take the dry-run, then one test frame
 # (e.g. rerun with only the 1 s step) and scale ALL exposures by a common
 # factor so the LONGEST step is just saturated at sweep start. Then invoke the
@@ -52,7 +52,8 @@ camera:
   offset: 50
   egain_e_per_adu: 1.0
   ron_e: 3.5
-  cooler_setpoint_c: -20.0   # matches the deployed QHY268M science default
+  cooler_setpoint_c: -15.0   # practical summer science default
+  cooler_policy: at_or_below # preserve a colder detector; never wait to warm
   pixel_size_um: 3.76
   plate_scale_arcsec: 0.224
 
