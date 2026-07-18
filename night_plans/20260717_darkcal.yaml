@@ -12,14 +12,14 @@
 #   scripts/run_calibration_night.py night_plans/20260717_darkcal.yaml --run --setpoint -10
 #   scripts/run_calibration_night.py night_plans/20260717_darkcal.yaml --run --setpoint -20
 # The runner: prints+logs every camera/EFW setting read BACK from hardware,
-# waits for the cooler to stabilize (re-issuing the setpoint each poll; on
-# timeout you may continue at the achieved temperature -- per-frame CCD-TEMP is
+# sets the cooler once, then waits read-only for it to stabilize (on timeout
+# you may continue at the achieved temperature -- per-frame CCD-TEMP is
 # authoritative for the fit), and writes each invocation into its own
 # FITSDATA/20260717/darkcal_T<setpoint>C_<HHMM>/ so temperature points never mix.
 # NEVER use plan_night.py --run (it homes the mount -> disconnects dead DEC).
 #
 # Deliverables (per Widenhorn et al. 2002 / EMVA 1288 dark characterization):
-#   - mean dark current vs exposure at each T (linear fit; 4 exposure points x5)
+#   - mean dark current vs exposure at each T (linear fit; 3 exposure points x5)
 #   - dark current vs temperature (>=3 setpoints -> doubling temperature)
 #   - bias level, read noise, and bias stability vs temperature (25 bias/point)
 #   - hot-pixel census vs temperature
@@ -56,17 +56,17 @@ camera:
 bricks:
   # filter: Dark on EVERY frame -- opaque slot stands in for the missing shutter.
   biasT: {type: cal, frame: BIAS, exp: 0, n: 25, filter: Dark}
-  # Exposure ladder for the dark-current slope. 300 s is the long anchor: at
-  # -10 C an IMX571-class sensor accumulates well under 1 e-/px in 300 s, but
-  # the frame-mean over 26 Mpix resolves it against the measured 0.036 ADU
-  # bias stability. ~41 min capture per temperature point.
+  # Three non-zero exposure levels are sufficient for a linear dark-current
+  # slope at each temperature. Omitting 300 s saves 25 min per setpoint for
+  # tonight's time-critical run, but reduces leverage on a weak slope: report
+  # an upper limit if the fitted slope is not significant. ~20 min capture per
+  # temperature point (plus cooler stabilization).
   darksT:
     type: cal_multi
     frames:
       - {frame: DARK, exp: 5,   n: 5, filter: Dark}
       - {frame: DARK, exp: 60,  n: 5, filter: Dark}
       - {frame: DARK, exp: 150, n: 5, filter: Dark}
-      - {frame: DARK, exp: 300, n: 5, filter: Dark}
 
 qa_gates:
   # Gain-30 operating point is UNMEASURED (July-9 numbers were gain 0), so QA

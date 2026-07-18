@@ -21,11 +21,11 @@ night needs:
 2. **Cooler stabilization gate** (``--setpoint`` override, ``--no-cooler-wait``
    to skip) -- polls CCD temperature + cooler power until the setpoint holds
    within ``--cooler-tol`` for ``--cooler-stable-s``, logging the approach
-   curve. The setpoint is RE-ISSUED on every poll: some QHYCCD SDK builds only
-   regulate while CONTROL_COOLER is refreshed periodically (the INDI/N.I.N.A
-   drivers do the same), and July-9 never reached its setpoint. On timeout the
-   operator chooses continue-at-achieved-T or abort; per-frame CCD-TEMP in the
-   headers is authoritative for reduction either way.
+   curve. The QHY SDK owns the cooler PID after the setpoint is issued once;
+   the gate only observes temperature and power, so it cannot perturb that
+   control loop. On timeout the operator chooses continue-at-achieved-T or
+   abort; per-frame CCD-TEMP in the headers is authoritative for reduction
+   either way.
 3. **Per-invocation output subdirectory** -- FITS names for cal frames encode
    only date/type/exposure/index, so re-running a plan (e.g. the same dark
    ladder at three temperatures) would silently overwrite. Each run therefore
@@ -59,6 +59,7 @@ from obs_utils.night_session import (
     _flush_pol_config_sidecar,
     _run_cal_frames,
     _run_frames,
+    plan_estimated_duration_s,
     plan_total_frames,
 )
 from obs_utils.night_display import NightReporter, total_frame_count
@@ -72,11 +73,6 @@ logger = logging.getLogger("calnight")
 # name->position resolution in obs_utils.alpaca.set_filter_position, so they
 # MUST match this order or every "Dark" request lands on the wrong slot.
 INSTALLED_EFW_NAMES = ["Clear", "Photometric B", "Photometric V", "Photometric R", "Dark"]
-
-# Rough per-frame non-exposure overhead (readout + download + save) used only
-# for the dry-run duration estimate.
-_FRAME_OVERHEAD_S = 2.5
-
 
 # --------------------------------------------------------------------------- #
 # EFW fail-closed check (carried over from the salvage runner)
@@ -207,9 +203,10 @@ def _wait_for_cooler(cam, setpoint_c: float, *, tol_c: float, stable_s: float,
                      timeout_s: float, poll_s: float, assume_yes: bool) -> float:
     """Block until CCD temperature holds ``setpoint_c`` +/- ``tol_c``.
 
-    Re-issues the setpoint every poll: some QHYCCD SDK builds only regulate
-    while CONTROL_COOLER is refreshed periodically (INDI/N.I.N.A do the same).
-    Returns the achieved temperature (also on operator-approved timeout).
+    The setpoint was applied once by ``_apply_session_camera``.  The QHY SDK
+    regulates cooler power internally; this function is read-only so polling
+    cannot reset or perturb that controller. Returns the achieved temperature
+    (also on operator-approved timeout).
     """
     if not _read(cam, "CanSetCCDTemperature"):
         logger.warning("[cooler] camera reports CanSetCCDTemperature=False; skipping wait.")
@@ -220,10 +217,6 @@ def _wait_for_cooler(cam, setpoint_c: float, *, tol_c: float, stable_s: float,
     start = time.monotonic()
     stable_since = None
     while True:
-        try:
-            cam.SetCCDTemperature = float(setpoint_c)
-        except Exception:
-            logger.warning("[cooler] re-issuing setpoint failed", exc_info=True)
         t = _read(cam, "CCDTemperature")
         p = _read(cam, "CoolerPower")
         t = float(t) if t is not None else float("nan")
@@ -234,6 +227,9 @@ def _wait_for_cooler(cam, setpoint_c: float, *, tol_c: float, stable_s: float,
         if abs(t - setpoint_c) <= tol_c:
             if stable_since is None:
                 stable_since = time.monotonic()
+                if stable_s <= 0:
+                    logger.info("[cooler] IN TOLERANCE at %+.2f C", t)
+                    return t
             elif time.monotonic() - stable_since >= stable_s:
                 logger.info("[cooler] STABLE at %+.2f C (power %s%%) after %.0f s",
                             t, "n/a" if p is None else f"{float(p):.0f}", elapsed)
@@ -301,10 +297,7 @@ def _attach_log_file(base_dir: Path, subdir: str) -> Path:
 # Dry-run preview
 # --------------------------------------------------------------------------- #
 def _estimate_s(config) -> float:
-    frames = list(config.calibration_before) + list(config.calibration_after)
-    for t in config.targets:
-        frames.extend(t.frames)
-    return sum(f.count * (f.exposure_s + _FRAME_OVERHEAD_S) for f in frames)
+    return plan_estimated_duration_s(config)
 
 
 def _describe(config, plan_path: Path, setpoint: float | None) -> None:
@@ -380,7 +373,11 @@ def run(config, plan_path: Path, args) -> int:
             )
 
     stage = config.calibration_stage
-    reporter = NightReporter(plan_total_frames(config), title=f"CALNIGHT {session_id}/{subdir}")
+    reporter = NightReporter(
+        plan_total_frames(config),
+        title=f"CALNIGHT {session_id}/{subdir}",
+        estimated_duration_s=plan_estimated_duration_s(config),
+    )
     with reporter:
         reporter.banner([
             ("session", session_id),
@@ -440,8 +437,8 @@ def main() -> int:
                         "is time-critical; CCD-TEMP is recorded per frame)")
     p.add_argument("--cooler-tol", type=float, default=0.5,
                    help="Stabilization tolerance [C] (default 0.5)")
-    p.add_argument("--cooler-stable-s", type=float, default=120.0,
-                   help="Required continuous in-tolerance time [s] (default 120)")
+    p.add_argument("--cooler-stable-s", type=float, default=30.0,
+                   help="Required continuous in-tolerance time [s] (default 30)")
     p.add_argument("--cooler-timeout", type=float, default=1500.0,
                    help="Stabilization timeout [s] before prompting (default 1500)")
     p.add_argument("--cooler-poll", type=float, default=15.0,

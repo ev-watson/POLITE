@@ -27,10 +27,10 @@ from cloudy twilight). **Must be committed+pushed before the obs PC can pull.**
 histogram offset-tuning: remove the captured pedestal using matching bias/master
 bias frames in reduction.
 
-**Success criterion:** dark current (e⁻/px/s) at ≥3 temperatures with a
-doubling-temperature fit, RON/bias per setpoint, and — if twilight cooperated —
-a PTC gain + full-well. All values header-verified (CCD-TEMP, gain 30, offset 50,
-Mode 0).
+**Success criterion:** a significant dark-current slope (or an explicit upper
+limit) at ≥3 temperatures with a doubling-temperature fit where measurable,
+RON/bias per setpoint, and — if twilight cooperated — a PTC gain + full-well.
+All values header-verified (CCD-TEMP, gain 30, offset 50, Mode 0).
 
 **Files:** `scripts/run_calibration_night.py`,
 `night_plans/20260717_darkcal.yaml`, `night_plans/20260717_ptc_twilight.yaml`,
@@ -45,9 +45,10 @@ Mode 0).
 - **2026-07-17** — Calibration-night prep (lab MacBook, at site). Built
   `scripts/run_calibration_night.py` (no-mount, camera+EFW only: settings
   banner with hardware read-back to screen+log, fail-closed gain/offset/readout
-  check, cooler stabilization gate with setpoint re-issue + achieved-T fallback,
+  check, read-only cooler stabilization gate after one setpoint command +
+  achieved-T fallback,
   per-invocation output subdirs). Plans: `20260717_darkcal.yaml` (bias×25 +
-  dark ladder 5/60/150/300 s ×5, all through opaque Dark slot — no shutter!),
+  dark ladder 5/60/150 s ×5, all through opaque Dark slot — no shutter!),
   `20260717_ptc_twilight.yaml` (overcast-twilight PTC exposure ladder + trailing
   bias). Fixed `dispatch_qa_gate` bias_qa call (passed bare Path to a
   Sequence-taking handler → TypeError; also missed `calibrations/` subdir) and

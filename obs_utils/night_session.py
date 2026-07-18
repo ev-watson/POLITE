@@ -14,7 +14,7 @@ from .block_log import BlockLogger, moon_separation_deg, pwi4_snapshot
 from .horizons import cache_ephemeris, fetch_ephemeris, resolve_target_id
 from .imaging import CaptureRequest, capture_fits_file, select_filter, select_hwp_angle
 from .mount import slew_altaz, slew_radec_j2000, wait_for_slew
-from .night_display import NightReporter, total_frame_count
+from .night_display import NightReporter, estimated_duration_s, total_frame_count
 from .pol_config import polconfig_snapshot, write_pol_config_sidecar
 from .qa_gates import QAGate, dispatch_qa_gate, gates_after_cal, gates_after_target
 from .session_context import SessionCaptureContext
@@ -363,6 +363,19 @@ def plan_total_frames(config: "NightSessionConfig") -> int:
     return total
 
 
+def plan_estimated_duration_s(config: "NightSessionConfig") -> float:
+    """Exposure-aware duration estimate for the live night-progress display."""
+    stage = config.calibration_stage
+    frames = []
+    for target in config.targets:
+        frames.extend(target.frames)
+    if config.calibration_before and stage in ("before", "both"):
+        frames.extend(config.calibration_before)
+    if config.calibration_after and stage in ("after", "both"):
+        frames.extend(config.calibration_after)
+    return estimated_duration_s(frames)
+
+
 def _run_frames(
     session,
     pwi4,
@@ -652,7 +665,11 @@ def run_night_session(config: NightSessionConfig) -> None:
 
     stage = config.calibration_stage
     total_frames = plan_total_frames(config)
-    reporter = NightReporter(total_frames, title=config.session_name or session_id)
+    reporter = NightReporter(
+        total_frames,
+        title=config.session_name or session_id,
+        estimated_duration_s=plan_estimated_duration_s(config),
+    )
     with reporter:
         reporter.banner([
             ("session", session_id),

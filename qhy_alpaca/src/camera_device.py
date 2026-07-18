@@ -23,6 +23,10 @@ from log import get_logger
 
 logger = get_logger()
 
+# ``Connected=True`` is synchronous at the ASCOM boundary, but a wedged SDK
+# must not hold its HTTP request forever.
+CONNECT_TIMEOUT_S = 60.0
+
 
 class CameraState(IntEnum):
     IDLE = 0
@@ -56,6 +60,7 @@ class CameraDevice:
         self._connected = False
         self._connecting = False
         self._connect_thread: Optional[Thread] = None
+        self._connect_error: Optional[Exception] = None
 
         self._camera_state = CameraState.IDLE
         self._image_ready = False
@@ -110,6 +115,7 @@ class CameraDevice:
     def connect(self) -> None:
         if self._connected or self._connecting:
             return
+        self._connect_error = None
         self._connecting = True
         self._connect_thread = Thread(target=self._connect_worker, daemon=True)
         self._connect_thread.start()
@@ -204,6 +210,7 @@ class CameraDevice:
 
         except Exception as e:
             logger.error(f"Connection failed for {self._config.entity}: {e}")
+            self._connect_error = e
             self._connected = False
             self._camera_state = CameraState.ERROR
             if self.handle is not None:
@@ -217,7 +224,6 @@ class CameraDevice:
                     self.libqhyccd.ReleaseQHYCCDResource()
                 except Exception:
                     pass
-            raise
         finally:
             self._connecting = False
 
@@ -501,8 +507,25 @@ class CameraDevice:
 
     @connected.setter
     def connected(self, value: bool) -> None:
-        if value and not self._connected:
-            self.connect()
+        if value:
+            if self._connected:
+                return
+            if not self._connecting:
+                self.connect()
+            thread = self._connect_thread
+            if thread is not None and thread.is_alive():
+                thread.join(timeout=CONNECT_TIMEOUT_S)
+            if thread is not None and thread.is_alive():
+                raise TimeoutError(
+                    f"Camera {self._config.entity} connection timed out after "
+                    f"{CONNECT_TIMEOUT_S:.0f}s"
+                )
+            if self._connected:
+                return
+            message = f"Failed to connect to camera {self._config.entity}"
+            if self._connect_error is not None:
+                raise RuntimeError(message) from self._connect_error
+            raise RuntimeError(message)
         elif not value and self._connected:
             self.disconnect()
 

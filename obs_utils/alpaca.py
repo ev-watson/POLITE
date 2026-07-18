@@ -36,10 +36,39 @@ class ImagingSession:
                 pass
 
 
-def connect_camera(host: str, device_number: int) -> CameraDevice:
+def connect_camera(
+    host: str,
+    device_number: int,
+    *,
+    timeout_s: float = 60.0,
+    poll_s: float = 0.25,
+) -> CameraDevice:
+    """Connect an Alpaca camera and wait for its QHY SDK handshake.
+
+    ``qhy_alpaca`` completes the device connection asynchronously.  Do not
+    configure binning, gain, offset, or cooling until it reports ``Connected``;
+    otherwise the first configuration request can race its SDK initialization.
+    """
     cam = CameraDevice(host, device_number)
     cam.Connected = True
-    return cam
+    start = time.monotonic()
+    while True:
+        if cam.Connected:
+            return cam
+        try:
+            still_connecting = bool(cam.Connecting)
+        except Exception:
+            still_connecting = False
+        if not still_connecting:
+            raise RuntimeError(
+                f"Camera on {host} (device {device_number}) did not connect"
+            )
+        if time.monotonic() - start >= timeout_s:
+            raise TimeoutError(
+                f"Camera on {host} (device {device_number}) connect timed out "
+                f"after {timeout_s:.0f}s"
+            )
+        time.sleep(poll_s)
 
 
 def connect_filter_wheel(host: str, device_number: int) -> FilterWheel:

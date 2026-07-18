@@ -40,7 +40,6 @@ try:  # rich is optional; the reporter no-ops without it
         Progress,
         TextColumn,
         TimeElapsedColumn,
-        TimeRemainingColumn,
     )
     from rich.table import Table
     from rich.text import Text
@@ -55,6 +54,31 @@ def total_frame_count(frame_plans) -> int:
     return sum(int(getattr(p, "count", 0)) for p in (frame_plans or []))
 
 
+def estimated_duration_s(frame_plans, *, frame_overhead_s: float = 2.5) -> float:
+    """Return planned capture time from exposure durations, not frame count.
+
+    A frame-count rate badly underestimates the remaining time when a plan
+    transitions from biases or short flats to multi-minute darks.  This estimate
+    includes a conservative fixed readout/download/save allowance per frame.
+    """
+    return sum(
+        int(getattr(plan, "count", 0))
+        * (max(0.0, float(getattr(plan, "exposure_s", 0.0))) + frame_overhead_s)
+        for plan in (frame_plans or [])
+    )
+
+
+def _format_duration(seconds: Optional[float]) -> str:
+    if seconds is None:
+        return "--:--"
+    whole_seconds = max(0, round(seconds))
+    hours, remainder = divmod(whole_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours:
+        return f"{hours:d}:{minutes:02d}:{seconds:02d}"
+    return f"{minutes:02d}:{seconds:02d}"
+
+
 class NightReporter:
     """Live night-progress display. Use as a context manager.
 
@@ -62,10 +86,24 @@ class NightReporter:
     is not, they either no-op or fall back to plain logging.
     """
 
-    def __init__(self, total_frames: int, *, title: str = "POLITE night", enabled: Optional[bool] = None):
+    def __init__(
+        self,
+        total_frames: int,
+        *,
+        title: str = "POLITE night",
+        estimated_duration_s: Optional[float] = None,
+        frame_overhead_s: float = 2.5,
+        enabled: Optional[bool] = None,
+    ):
         self.total_frames = max(0, int(total_frames))
         self.title = title
         self._done = 0
+        self._remaining_estimate_s = (
+            max(0.0, float(estimated_duration_s))
+            if estimated_duration_s is not None
+            else None
+        )
+        self._frame_overhead_s = max(0.0, float(frame_overhead_s))
         self._block: Optional[str] = None
         self._saved_handlers: List[logging.Handler] = []
         if enabled is None:
@@ -92,13 +130,17 @@ class NightReporter:
             TextColumn("frames", style=PALETTE["taupe"]),
             TimeElapsedColumn(),
             TextColumn("elapsed", style=PALETTE["taupe"]),
-            TimeRemainingColumn(),
             TextColumn("ETA", style=PALETTE["taupe"]),
+            TextColumn("{task.fields[planned_eta]}", style=PALETTE["stone"]),
             console=self._console,
             transient=False,
         )
         self._progress.start()
-        self._task = self._progress.add_task(self.title, total=max(1, self.total_frames))
+        self._task = self._progress.add_task(
+            self.title,
+            total=max(1, self.total_frames),
+            planned_eta=_format_duration(self._remaining_estimate_s),
+        )
         # Route logging through the same console so log lines don't tear the bar.
         root = logging.getLogger()
         self._saved_handlers = list(root.handlers)
@@ -156,6 +198,10 @@ class NightReporter:
                        hwp: Optional[float] = None, exp: float = 0.0,
                        idx: int = 0, count: int = 0) -> None:
         self._done += 1
+        if self._remaining_estimate_s is not None:
+            self._remaining_estimate_s = max(
+                0.0, self._remaining_estimate_s - max(0.0, float(exp)) - self._frame_overhead_s
+            )
         if not self.enabled:
             return
         detail = f"{frame_type}"
@@ -166,7 +212,12 @@ class NightReporter:
         detail += f"  {exp:.1f}s  [{idx}/{count}]"
         desc = f"{self._block or self.title}  {detail}"
         if self._task is not None:
-            self._progress.update(self._task, completed=self._done, description=desc)
+            self._progress.update(
+                self._task,
+                completed=self._done,
+                description=desc,
+                planned_eta=_format_duration(self._remaining_estimate_s),
+            )
 
     def qa(self, result) -> None:
         level = getattr(result, "level", "PASS" if getattr(result, "passed", True) else "FAIL")

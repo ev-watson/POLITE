@@ -23,7 +23,7 @@
 # >>> HOW TO RUN <<<
 #   scripts/run_calibration_night.py night_plans/20260717_ptc_twilight.yaml                  # dry-run
 #   scripts/run_calibration_night.py night_plans/20260717_ptc_twilight.yaml --run --no-cooler-wait
-# --no-cooler-wait because twilight is time-critical; set --setpoint -10 earlier
+# --no-cooler-wait because twilight is time-critical; set --setpoint -20 earlier
 # so the sensor is already cold, or accept per-frame CCD-TEMP as truth.
 # CONSOLE TUNE before the first sweep: take the dry-run, then one test frame
 # (e.g. rerun with only the 1 s step) and scale ALL exposures by a common
@@ -52,7 +52,7 @@ camera:
   offset: 50
   egain_e_per_adu: 1.0
   ron_e: 3.5
-  cooler_setpoint_c: -10.0
+  cooler_setpoint_c: -20.0   # matches the deployed QHY268M science default
   pixel_size_um: 3.76
   plate_scale_arcsec: 0.224
 
