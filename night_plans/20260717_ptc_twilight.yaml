@@ -42,12 +42,14 @@ base_data_dir: FITSDATA
 naming: polite
 calibrate_stage: before      # all-calibration plan; entries run in listed order
 
-# Same operating point as darkcal + July-9 (Mode 0, gain 0, offset 30).
+# Same operating point as tonight's darkcal: Mode 0, gain 30 (QHY's stated
+# unity-gain setting for the QHY268M; vendor claim, CONJECTURED until this
+# PTC), fixed offset 50. PTC measures the ACTUAL e-/ADU at this setting.
 camera:
   readout_mode: 0
   readout_mode_name: "Mode 0"
-  gain: 0
-  offset: 30
+  gain: 30
+  offset: 50
   egain_e_per_adu: 1.0
   ron_e: 3.5
   cooler_setpoint_c: -10.0
@@ -55,6 +57,15 @@ camera:
   plate_scale_arcsec: 0.224
 
 bricks:
+  # Fast, standalone Janesick single-point check. After console-tuning so the
+  # 8-s step just clips, this 4-s pair is approximately half full-well. The
+  # named objects keep these four frames distinct from the later PTC ladder in
+  # the flat polite filename layout. They are only a preliminary unity-gain
+  # check; the full ladder below is the definitive PTC measurement.
+  ptc_unity_bias:
+    {type: cal, frame: BIAS, exp: 0, n: 2, filter: Dark, object_name: PTCUnityBias}
+  ptc_unity_pair:
+    {type: cal, frame: FLAT, exp: 4.0, n: 2, filter: "Photometric V", object_name: PTCUnity}
   # Exposure ladder, n=4 per step = 2 PTC pairs per level per sweep. Spans 80x;
   # combined with sky decay across ~3 sweeps that covers saturation down to the
   # noise floor. IMAGETYP=FLAT is honest: these ARE illuminated frames.
@@ -74,4 +85,4 @@ bricks:
   ptc_bias: {type: cal, frame: BIAS, exp: 0, n: 10, filter: Dark}
 
 plan:
-  - cal: [ptc_ladder, ptc_bias]
+  - cal: [ptc_unity_bias, ptc_unity_pair, ptc_ladder, ptc_bias]

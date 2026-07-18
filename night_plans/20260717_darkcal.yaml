@@ -35,14 +35,18 @@ base_data_dir: FITSDATA
 naming: polite
 calibrate_stage: before      # all-calibration plan; entries run in listed order
 
-# SAME operating point as 2026-07-09 (comparability with the existing
-# characterization): Mode 0, gain 0, offset 30. egain/ron are CLAIMED values
-# for headers only -- measuring egain is the point of the PTC twilight plan.
+# Operating point: Mode 0, gain 30 (QHY's stated unity-gain setting for the
+# QHY268M; vendor claim, therefore CONJECTURED until tonight's PTC), fixed
+# offset 50. NOTE: differs from July-9 (gain 0) -- all of tonight's data are
+# self-consistent at gain 30 / offset 50. Do NOT spend observing time tuning
+# offset from a histogram: use the recorded bias frames/master bias to remove
+# the actual pedestal in reduction. egain/ron are nominal header placeholders;
+# the PTC twilight plan measures them.
 camera:
   readout_mode: 0
   readout_mode_name: "Mode 0"
-  gain: 0
-  offset: 30
+  gain: 30
+  offset: 50
   egain_e_per_adu: 1.0
   ron_e: 3.5
   cooler_setpoint_c: -10.0   # per-invocation override: --setpoint
@@ -65,11 +69,12 @@ bricks:
       - {frame: DARK, exp: 300, n: 5, filter: Dark}
 
 qa_gates:
-  # RON/mean targets anchored to July-9 MEASURED values (5.6 ADU RON, 491 ADU
-  # bias median at this operating point), not the unverified 3.5 e- spec.
+  # Gain-30 operating point is UNMEASURED (July-9 numbers were gain 0), so QA
+  # is warn-only with loose bounds: spec-ish RON, wide mean window (bias level
+  # at gain 30 / offset 50 unknown; mean_lo default 50 still catches clipping).
   - after_cal: biasT
     handler: bias_qa
-    args: {abort_on_fail: false, ron_target_e: 5.6, ron_tol_e: 1.5, mean_hi: 600}
+    args: {abort_on_fail: false, ron_target_e: 3.5, ron_tol_e: 2.5, mean_hi: 5000}
 
 plan:
   - cal: [biasT, darksT]

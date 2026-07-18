@@ -1,52 +1,63 @@
 # Next-session prompts
 
-## TOP PROMPT — Assess salvage-night results (or run it if not yet executed)
+## TOP PROMPT — Execute the 2026-07-17 calibration night (obs PC), then reduce
 
-**Context:** DEC drive is dead (engaging DEC auto-disconnects the mount → no
-slew/home/point). We salvaged 2026-07-09/10 as qualitative *instrument*
-commissioning. All code + the salvage plan are on `origin/main`. The no-mount
-runner is `scripts/run_salvage_night.py`; it connects only camera+EFW+HWP and
-reuses the tested capture path. `plan_night.py --run` must NOT be used (it homes
-the mount). EFW order is now Clear,B,V,R,Dark in both the Python config and the
-ASCOM Remote driver.
+**Context:** Cloudy night, DEC dead (no slew/home; motors can't even engage;
+manual tube moves don't hold). Prepared on the lab MacBook 2026-07-17: a
+NO-MOUNT calibration runner + two plans + checklist targeting the
+first-light-publish gaps (dark-vs-temperature; opportunistic PTC gain/full-well
+from cloudy twilight). **Must be committed+pushed before the obs PC can pull.**
 
-**Pre-flight (server moved + DATE-OBS fix, 2026-07-10):** The QHY Alpaca server
-is now `qhy_alpaca/` (was `third_party/alpaca-qhyccd-camera/`). On the observatory
-PC: `git pull`, relaunch via `scripts/start_qhy_alpaca_server.ps1`, then capture
-one frame and confirm `DATE-OBS` is the current UTC (not 1995-10-09) and
-`TIME-SRC=SYSCLOCK`. `qhy_alpaca/config.windows.yaml` sets `has_gps: false`
-(QHY268M has no GPS module) — do not enable unless a real receiver is installed.
-Also `pip install rich` in the observatory POLITE env for the new night display
-(optional; degrades to plain logging without it).
+**What to do (observatory PC):**
+1. `git pull`, then follow `20260717_calibration_night_checklist.md` top to
+   bottom (pre-flight → dry-runs → darkcal @ 0/−10/−20 °C → PTC twilight
+   sweeps ×3 in the 19:50–20:40 PDT window).
+2. Runner: `scripts/run_calibration_night.py <plan> --run [--setpoint T]`.
+   It prints+logs every setting read back from hardware and gates on cooler
+   stabilization (continue-at-achieved-T is fine; CCD-TEMP per frame is truth).
+   NEVER `plan_night.py --run`.
+3. After the run: reduce. Dark-vs-T fit (Widenhorn 2002 style: mean dark vs
+   exposure per setpoint → slope vs T), RON/bias vs T, hot-pixel census; PTC
+   pairs (Janesick) → e⁻/ADU + full-well if twilight frames usable. Extend
+   `notebooks/reductions/reduction_20260709.ipynb` conventions (ADU→e⁻ once
+   gain lands).
 
-**What to do:**
-1. If the salvage night has NOT run yet, on the observatory PC:
-   `git pull` →
-   `scripts/run_salvage_night.py night_plans/20260709_salvage.yaml` (dry-run) →
-   `... --run`. Console-tune `exp`/`n` for `polV8_drift` + `superflatV_drift` in
-   `night_plans/20260709_salvage.yaml` (keep the two exposures EQUAL; the field
-   must visibly drift between frames; trail < ~2 px/frame).
-2. If it HAS run, pull the FITS from `FITSDATA/20260709/` and assess the three
-   qualitative questions: (a) is HWP modulation present in the beam pair? (b) is
-   the beam pair trackable frame-by-frame as it drifts? (c) does the
-   detector-frame Stokes vector transform correctly under the +45° whole-
-   polarimeter rotation (compare the `driftA_polV8_rot45` set vs `driftA_polV8`)?
-3. Build the night-sky super-flat: median/sigma-clip-combine the
-   `superflatV_drift` frames PER HWP ANGLE; confirm it captures the two-beam
-   Savart geometry + relative throughput.
+**Operating point:** gain 30 is QHY's vendor-stated QHY268M unity-gain setting
+(**CONJECTURED** until the PTC); fixed offset 50. Do not spend the night on
+histogram offset-tuning: remove the captured pedestal using matching bias/master
+bias frames in reduction.
 
-**Success criterion:** A yes/no answer to each of the three qualitative questions
-with supporting frames, and a usable per-HWP-angle super-flat. DEC failure and
-all metadata documented per `salvage_no_pointing_checklist.md`.
+**Success criterion:** dark current (e⁻/px/s) at ≥3 temperatures with a
+doubling-temperature fit, RON/bias per setpoint, and — if twilight cooperated —
+a PTC gain + full-well. All values header-verified (CCD-TEMP, gain 30, offset 50,
+Mode 0).
 
-**Files involved:** `scripts/run_salvage_night.py`,
-`night_plans/20260709_salvage.yaml`, `salvage_no_pointing_checklist.md`,
-`FITSDATA/20260709/`, `obs_utils/interactive.py`, `poltools/` (reduction),
-`notebooks/reduction.ipynb`.
+**Files:** `scripts/run_calibration_night.py`,
+`night_plans/20260717_darkcal.yaml`, `night_plans/20260717_ptc_twilight.yaml`,
+`20260717_calibration_night_checklist.md`, `scripts/quick_unity_gain.py`,
+`obs_utils/qa_gates.py` (bias_qa dispatch fix), data →
+`FITSDATA/20260717/<block>_<HHMM>/`.
 
 ---
 
 ## DONE
+
+- **2026-07-17** — Calibration-night prep (lab MacBook, at site). Built
+  `scripts/run_calibration_night.py` (no-mount, camera+EFW only: settings
+  banner with hardware read-back to screen+log, fail-closed gain/offset/readout
+  check, cooler stabilization gate with setpoint re-issue + achieved-T fallback,
+  per-invocation output subdirs). Plans: `20260717_darkcal.yaml` (bias×25 +
+  dark ladder 5/60/150/300 s ×5, all through opaque Dark slot — no shutter!),
+  `20260717_ptc_twilight.yaml` (overcast-twilight PTC exposure ladder + trailing
+  bias). Fixed `dispatch_qa_gate` bias_qa call (passed bare Path to a
+  Sequence-taking handler → TypeError; also missed `calibrations/` subdir) and
+  made QA dispatch exception-proof. 154 tests pass. Twilight times computed for
+  site (sunset 19:49 PDT, civil 20:21, naut 20:55).
+
+- **2026-07-14** — Salvage assessment completed (see memory
+  `salvage-reduction-20260709`): reduction notebook + verdicts (beam geometry
+  ESTABLISHED, modulation INCONCLUSIVE, flat FAILED); rebuilt
+  `first_light_polarimetry_characterization_report.md` with 14 verified refs.
 
 - **2026-07-10** — Tooling session (committed+pushed, `024db68`). (1) Un-vendored
   the QHY Alpaca server `third_party/alpaca-qhyccd-camera/` → `qhy_alpaca/` and
@@ -56,12 +67,9 @@ all metadata documented per `salvage_no_pointing_checklist.md`.
   tiers in `obs_utils/qa_lib.py`; WARN keeps capturing); added
   `tests/test_qa_lib.py`. (3) Added `obs_utils/night_display.py` rich NightReporter
   (live progress bar, banner, colored QA) threaded through night + salvage runners.
-  125 tests pass. Server not yet import/hardware-tested (pydantic/libqhyccd on obs PC).
 
 - **2026-07-10** — Salvage-night prep for dead-DEC commissioning. Built no-mount
-  runner `scripts/run_salvage_night.py`; fixed EFW `filter_names` order
-  (Clear,B,V,R,Dark) in `config.py`+`user_config.py`; replaced impossible
-  illuminated flats with a night-sky super-flat drift block in
-  `night_plans/20260709_salvage.yaml`; fixed `FilterWheelState %d` logging crash
-  in `scripts/observatory_smoke_test.py`; tracked notebooks in-repo. All pushed
-  to origin/main (through commit a06d08d).
+  runner `scripts/run_salvage_night.py` (removed in `c4012b9` cleanup; recover
+  from `024db68` if needed); fixed EFW `filter_names` order (Clear,B,V,R,Dark)
+  in `config.py`+`user_config.py`; night-sky super-flat drift block in
+  `night_plans/20260709_salvage.yaml`. All pushed through a06d08d.

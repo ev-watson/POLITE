@@ -179,7 +179,8 @@ def _expand_brick(name: str, spec: Dict[str, Any]) -> List[FramePlan]:
         frame = str(spec.get("frame", "DARK")).upper()
         return [FramePlan(
             frame_type=frame, exposure_s=float(spec.get("exp", 0.0)), count=n,
-            filter=spec.get("filter"), source_brick=name, **common,
+            filter=spec.get("filter"), object_name=spec.get("object_name"),
+            source_brick=name, **common,
         )]
 
     raise NightPlanError(f"Unknown brick type {btype!r} in {name!r}")
