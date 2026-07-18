@@ -12,11 +12,11 @@ def test_fits_roundtrip_byte_exact(cfg, rng, tmp_path):
     scene = pt.make_scene([(60.0, 70.0)], [(1, 0.03, -0.02, 0)], [5e5])
     frame = pt.render_frame(scene, cfg, 0.0, exptime_s=5.0, seeing_arcsec=2.0,
                             sky_e_per_px=40.0, rng=rng, shape=(128, 128))
-    p = pt.write_pol_fits(tmp_path / "f.fit", frame, 0.0, cfg)
+    p = pt.write_pol_fits(tmp_path / "f.fits", frame, 0.0, cfg)
     back = ct.load_frame(str(p))
     # caltools reads physical ADU via memmap=False; must equal what we wrote
     assert np.array_equal(back.astype(np.uint16), frame)
-    # BZERO present (unsigned-int convention for QHY/TheSkyX)
+    # BZERO present (POLITE custom-writer unsigned-int convention)
     hdr = fits.getheader(str(p))
     assert hdr["BZERO"] == 32768
     assert hdr["HWPANG"] == 0.0
@@ -43,7 +43,7 @@ def test_missing_hwpang_raises_named_error(tmp_path):
     """A frame without HWPANG is a hard, file-named error (not a silent NaN that
     surfaces later as a cryptic angle-lookup miss)."""
     data = np.zeros((32, 32), dtype=np.uint16)
-    p = tmp_path / "no_hwp.fit"
+    p = tmp_path / "no_hwp.fits"
     fits.PrimaryHDU(data=data).writeto(p)
     with pytest.raises(ValueError):
         pt.read_pol_frame(str(p))
@@ -98,6 +98,13 @@ def test_fits_header_beam_geometry_is_characterized(tmp_path):
         "BEAMSEP": 239.5,
         "BEAMPA": 328.2,
         "EGAIN": 1.0,
+        "XPIXSZ": 3.76,
+        "INSTRUME": "test-detector",
+        "GAIN": 0,
+        "READMODE": 0,
+        "PIXSCALE": 0.224,
+        "RON": 3.5,
+        "INSTROT": 0.0,
     })
     path = tmp_path / "geometry.fits"
     fits.PrimaryHDU(data, header=header).writeto(path)

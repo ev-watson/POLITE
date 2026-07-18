@@ -7,8 +7,6 @@ Uses ``memmap=False`` so astropy applies BZERO/BSCALE scaling in memory
 
 from __future__ import annotations
 
-import os
-import re
 import warnings
 from collections import defaultdict
 from contextlib import ExitStack
@@ -18,10 +16,6 @@ import numpy as np
 from astropy.io import fits
 
 from ._types import Frame, FrameCube, ROI, SensorConfig
-
-# TheSkyX naming convention: 8-digit index + ImageType + ExptimeSecs
-_FILENAME_RE = re.compile(r'^(\d{8})(Dark|FlatField)([\d.]+)secs')
-
 
 def load_frame(
     path: str,
@@ -152,6 +146,7 @@ def sensor_config_from_header(
     path: str,
     gain: Optional[float] = None,
     pixel_size_um: Optional[float] = None,
+    sensor_name: Optional[str] = None,
 ) -> SensorConfig:
     """Build a ``SensorConfig`` from FITS header keywords.
 
@@ -178,18 +173,24 @@ def sensor_config_from_header(
         pix = float(hdr["XPIXSZ"])
     elif pixel_size_um is not None:
         pix = float(pixel_size_um)
-    elif "QHY268" in str(hdr.get("INSTRUME", "")):
-        pix = 3.76
-        warnings.warn(
-            f"{path}: FITS header missing XPIXSZ; using QHY268M default 3.76 um",
-            stacklevel=2,
-        )
     else:
         raise KeyError(
             "FITS header is missing XPIXSZ; pass pixel_size_um explicitly."
         )
 
     temp = float(hdr["CCD-TEMP"]) if "CCD-TEMP" in hdr else float("nan")
+    if "INSTRUME" in hdr:
+        detector_name = str(hdr["INSTRUME"])
+    elif sensor_name is not None:
+        detector_name = str(sensor_name)
+        warnings.warn(
+            f"{path}: FITS header missing INSTRUME; using supplied sensor_name={detector_name!r}",
+            stacklevel=2,
+        )
+    else:
+        raise KeyError(
+            f"{path}: FITS header missing INSTRUME; pass sensor_name= explicitly."
+        )
 
     return SensorConfig(
         nx=int(hdr["NAXIS1"]),
@@ -198,7 +199,7 @@ def sensor_config_from_header(
         gain_e_per_adu=gain_val,
         temperature_c=temp,
         bitdepth=int(hdr.get("BITPIX", 16)),
-        sensor_name=str(hdr.get("INSTRUME", "QHY268M")),
+        sensor_name=detector_name,
     )
 
 
@@ -209,24 +210,31 @@ def group_by_type_and_exposure(
 ) -> Dict[Tuple[str, float], List[str]]:
     """Group FITS files by image type and exposure time.
 
-    Primary: parse the TheSkyX filename convention
-    ``########TypeExptimesecs``.
-    Fallback: read IMAGETYP and EXPTIME from FITS headers.
+    Read ``IMAGETYP`` and ``EXPTIME`` from every FITS header.
+
+    Filenames are deliberately ignored. POLITE files may use the standard
+    ``YYYY-MM-DD_target_filter_exposure`` name, an arbitrary generated name, or
+    a copied/archive name; acquisition metadata lives in the FITS header.
+
+    Both cards are required. Silently assigning ``Unknown`` or ``0`` would
+    merge malformed files into calibration groups and hide acquisition errors.
 
     Returns a dict keyed by ``(image_type, exptime)`` with sorted file lists.
     """
     groups: Dict[Tuple[str, float], List[str]] = defaultdict(list)
 
     for p in sorted(paths):
-        basename = os.path.basename(p)
-        m = _FILENAME_RE.match(basename)
-        if m:
-            itype = m.group(2)
-            exp = float(m.group(3))
-        else:
-            hdr = fits.getheader(p)
-            itype = str(hdr.get("IMAGETYP", "Unknown"))
-            exp = float(hdr.get("EXPTIME", 0.0))
+        hdr = fits.getheader(p)
+        if "IMAGETYP" not in hdr:
+            raise KeyError(f"{p}: FITS header missing required IMAGETYP")
+        if "EXPTIME" not in hdr:
+            raise KeyError(f"{p}: FITS header missing required EXPTIME")
+        itype = str(hdr["IMAGETYP"]).strip().upper()
+        if not itype:
+            raise ValueError(f"{p}: FITS header IMAGETYP is empty")
+        exp = float(hdr["EXPTIME"])
+        if not np.isfinite(exp) or exp < 0:
+            raise ValueError(f"{p}: FITS header EXPTIME must be finite and non-negative")
         # Camera APIs often return binary-floating artifacts such as
         # 0.2000000000109 s.  Canonicalizing at microsecond precision prevents
         # one requested exposure from fragmenting into several calibration
@@ -249,12 +257,3 @@ def get_timestamps(paths: List[str]) -> np.ndarray:
         else:
             stamps.append(np.datetime64("NaT"))
     return np.array(stamps)
-
-
-def get_file_index(path: str) -> Optional[int]:
-    """Extract the 8-digit sequence index from a TheSkyX filename."""
-    basename = os.path.basename(path)
-    m = _FILENAME_RE.match(basename)
-    if m:
-        return int(m.group(1))
-    return None

@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional, Union
 import yaml
 from astropy.io import fits
 
+import caltools as ct
 from caltools import SensorConfig
 
 from ._types import BeamGeometry, PolConfig, default_efw_filters
@@ -161,27 +162,66 @@ def polconfig_from_fits_headers(
     path: Union[str, Path],
     *,
     filter_name: Optional[str] = None,
+    gain_setting: Optional[int] = None,
+    readout_mode: Optional[int] = None,
+    egain_e_per_adu: Optional[float] = None,
+    pixel_size_um: Optional[float] = None,
+    sensor_name: Optional[str] = None,
+    plate_scale_arcsec: Optional[float] = None,
+    ron_e: Optional[float] = None,
+    beam_separation_px: Optional[float] = None,
+    beam_position_angle_deg: Optional[float] = None,
+    instrument_rotator_deg: Optional[float] = None,
 ) -> PolConfig:
-    """Build a minimal :class:`PolConfig` from FITS header keywords (fallback)."""
+    """Build a :class:`PolConfig` from the shared FITS metadata contract.
+
+    Required detector and polarimetry metadata come from the FITS header.
+    Explicit keyword arguments are supported for deliberately incomplete
+    commissioning frames; no camera-model values are inferred.
+    """
     hdr = fits.getheader(str(path), ignore_missing_end=True)
-    fname = filter_name or str(hdr.get("FILTER", "Photometric V"))
-    det = SessionDetectorConfig(
-        gain_setting=int(hdr.get("GAIN", 0)),
-        offset=int(hdr.get("OFFSET", 0)),
-        egain_e_per_adu=float(hdr.get("EGAIN", 1.0)),
-        readout_mode=int(hdr.get("READMODE", 0)),
-        readout_mode_name=str(hdr.get("RMODE", f"Mode {hdr.get('READMODE', 0)}")),
-        pixel_size_um=float(hdr.get("XPIXSZ", 3.76)),
-        plate_scale_arcsec=float(hdr.get("PIXSCALE", 0.224)),
-        ron_e=float(hdr["RON"]) if "RON" in hdr else 3.5,
-        sensor_name=str(hdr.get("INSTRUME", "QHY268M")),
-        nx=int(hdr.get("NAXIS1", 6280)),
-        ny=int(hdr.get("NAXIS2", 4210)),
-        beam_separation_px=float(hdr.get("BEAMSEP", 60.0)),
-        beam_position_angle_deg=float(hdr.get("BEAMPA", 0.0)),
-        beam_geometry_characterized="BEAMSEP" in hdr and "BEAMPA" in hdr,
+    fname = filter_name or hdr.get("FILTER")
+    if not fname:
+        raise KeyError(f"{path}: FITS header missing FILTER; pass filter_name= explicitly")
+
+    sensor = ct.sensor_config_from_header(
+        str(path),
+        gain=egain_e_per_adu,
+        pixel_size_um=pixel_size_um,
+        sensor_name=sensor_name,
     )
-    instrot = float(hdr["INSTROT"]) if "INSTROT" in hdr else 0.0
+
+    def _required_or(value, card: str, label: str):
+        if value is not None:
+            return value
+        if card not in hdr:
+            raise KeyError(f"{path}: FITS header missing {card}; pass {label}= explicitly")
+        return hdr[card]
+
+    gain_idx = int(_required_or(gain_setting, "GAIN", "gain_setting"))
+    mode_idx = int(_required_or(readout_mode, "READMODE", "readout_mode"))
+    plate_scale = float(_required_or(plate_scale_arcsec, "PIXSCALE", "plate_scale_arcsec"))
+    read_noise = float(_required_or(ron_e, "RON", "ron_e"))
+    beam_sep = float(_required_or(beam_separation_px, "BEAMSEP", "beam_separation_px"))
+    beam_pa = float(_required_or(beam_position_angle_deg, "BEAMPA", "beam_position_angle_deg"))
+    instrot = float(_required_or(instrument_rotator_deg, "INSTROT", "instrument_rotator_deg"))
+
+    det = SessionDetectorConfig(
+        gain_setting=gain_idx,
+        offset=int(hdr.get("OFFSET", 0)),
+        egain_e_per_adu=sensor.gain_e_per_adu,
+        readout_mode=mode_idx,
+        readout_mode_name=str(hdr.get("RMODE", f"Mode {mode_idx}")),
+        pixel_size_um=sensor.pixel_size_um,
+        plate_scale_arcsec=plate_scale,
+        ron_e=read_noise,
+        sensor_name=sensor.sensor_name,
+        nx=sensor.nx,
+        ny=sensor.ny,
+        beam_separation_px=beam_sep,
+        beam_position_angle_deg=beam_pa,
+        beam_geometry_characterized=True,
+    )
     return polconfig_from_detector(det, fname, instrument_rotator_deg=instrot)
 
 

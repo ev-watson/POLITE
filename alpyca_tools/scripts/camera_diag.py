@@ -15,7 +15,7 @@ from alpyca_tools.camera_ops import ExposureSettings, capture_image
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Basic Alpaca camera diagnostics.")
-    parser.add_argument("--host", default="localhost:11111", help="Alpaca host or host:port")
+    parser.add_argument("--host", default="localhost:11112", help="POLITE QHY Alpaca camera host or host:port")
     parser.add_argument("--camera", type=int, default=0, help="Camera device number")
     parser.add_argument("--exposure", type=float, help="Run a short exposure (seconds)")
     return parser.parse_args()

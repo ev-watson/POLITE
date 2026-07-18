@@ -3,6 +3,12 @@
 A FastAPI-based server, implementing the ASCOM **ICameraV4** interface. Communication is via published QHYCCD library,
 which has been tested up to version 25.09.29.
 
+The server is a camera-pixel transport only. Its Alpaca `ImageArray`/
+`ImageBytes` endpoints do not write FITS files or define POLITE acquisition
+metadata. POLITE clients retrieve those pixels and write `.fits` files through
+`alpyca_tools.fits_writer`, which is the authoritative header and unsigned
+`BZERO`/`BSCALE` serialization path.
+
 ---
 
 ## Implemented ICameraV4 capabilities as of this driver version

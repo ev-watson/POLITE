@@ -29,8 +29,11 @@ CLAUDE.md
 AGENTS.md
 handoff.md
 MANUAL.md
+*.md
+!README.md
 prompts/
 reference-sheets/
+reports/
 tests/
 !/tests/
 !/tests/*.py

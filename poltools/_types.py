@@ -31,6 +31,56 @@ from caltools import SensorConfig
 # split direction (position angle), in detector (x, y) pixels.
 
 
+# --- Manufacturer instrument specifications (physical anchors) --------------
+# α-BBO Savart plate: manufacturer-stated centre-to-centre beam separation.
+# This is the *physical* anchor for the dual-beam geometry. Any configured or
+# measured separation should be validated against it (``validate_beam_separation``)
+# so an arbitrary placeholder (historically 60 px) cannot silently survive into a
+# reduction. On the QHY268M (3.76 µm pixels) 0.9 mm ≈ 239 px; the 2026-07-09
+# salvage night measured 238.4 px = 0.896 mm, confirming the spec to <0.5%.
+SAVART_BEAM_SEPARATION_MM = 0.9          # manufacturer nominal, α-BBO Savart plate
+QHY268M_PIXEL_SIZE_UM = 3.76             # IMX571 pixel pitch
+
+
+def nominal_beam_separation_px(
+    pixel_size_um: float = QHY268M_PIXEL_SIZE_UM,
+    separation_mm: float = SAVART_BEAM_SEPARATION_MM,
+) -> float:
+    """Manufacturer-nominal Savart beam separation converted to detector pixels.
+
+    Wavelength-averaged nominal; the α-BBO plate is dispersive, so per-band
+    separations scatter a few pixels around this value. Use it to seed and
+    sanity-check per-filter geometry, not as a calibrated band value.
+    """
+    return float(separation_mm) * 1000.0 / float(pixel_size_um)
+
+
+def validate_beam_separation(
+    separation_px: float,
+    pixel_size_um: float = QHY268M_PIXEL_SIZE_UM,
+    tol_frac: float = 0.10,
+) -> Tuple[bool, str]:
+    """Check a configured/measured beam separation against the manufacturer nominal.
+
+    Returns ``(ok, message)``. ``ok`` is False when ``separation_px`` deviates
+    from :func:`nominal_beam_separation_px` by more than ``tol_frac`` (default
+    10 %), catching unphysical placeholders (e.g. the historical 60 px value,
+    ~75 % low) before they reach a reduction. ``message`` reports the value in mm
+    beside the nominal.
+    """
+    nominal = nominal_beam_separation_px(pixel_size_um)
+    measured_mm = float(separation_px) * float(pixel_size_um) / 1000.0
+    dev = abs(float(separation_px) - nominal) / nominal
+    ok = dev <= tol_frac
+    msg = (
+        f"beam separation {separation_px:.1f} px = {measured_mm:.3f} mm "
+        f"vs manufacturer nominal {nominal:.1f} px "
+        f"({SAVART_BEAM_SEPARATION_MM:.3f} mm); deviation {dev * 100:.1f}% "
+        f"({'within' if ok else 'exceeds'} {tol_frac * 100:.0f}% tolerance)"
+    )
+    return ok, msg
+
+
 @dataclass(frozen=True)
 class BeamGeometry:
     """Dual-beam geometry produced by the α-BBO Savart plate on the detector.

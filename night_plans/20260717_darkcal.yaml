@@ -1,0 +1,75 @@
+# DARK-CALIBRATION plan - 2026-07-17 (Julian) - NO TELESCOPE, NO SKY NEEDED
+# Cloudy night, DEC drive still dead (no slew/home/point; motors cannot even be
+# engaged). This plan is one TEMPERATURE POINT of the dark-current-vs-temperature
+# ladder: bias stack + dark exposure ladder, all through the OPAQUE "Dark" EFW
+# slot (the QHY268M has NO mechanical shutter -- a "dark" through Clear/V is a
+# light frame; pre-sunset ambient light makes this mandatory, and it costs
+# nothing after dark).
+#
+# >>> HOW TO RUN (one invocation per cooler setpoint) <<<
+#   scripts/run_calibration_night.py night_plans/20260717_darkcal.yaml                 # dry-run
+#   scripts/run_calibration_night.py night_plans/20260717_darkcal.yaml --run --setpoint 0
+#   scripts/run_calibration_night.py night_plans/20260717_darkcal.yaml --run --setpoint -10
+#   scripts/run_calibration_night.py night_plans/20260717_darkcal.yaml --run --setpoint -20
+# The runner: prints+logs every camera/EFW setting read BACK from hardware,
+# waits for the cooler to stabilize (re-issuing the setpoint each poll; on
+# timeout you may continue at the achieved temperature -- per-frame CCD-TEMP is
+# authoritative for the fit), and writes each invocation into its own
+# FITSDATA/20260717/darkcal_T<setpoint>C_<HHMM>/ so temperature points never mix.
+# NEVER use plan_night.py --run (it homes the mount -> disconnects dead DEC).
+#
+# Deliverables (per Widenhorn et al. 2002 / EMVA 1288 dark characterization):
+#   - mean dark current vs exposure at each T (linear fit; 4 exposure points x5)
+#   - dark current vs temperature (>=3 setpoints -> doubling temperature)
+#   - bias level, read noise, and bias stability vs temperature (25 bias/point)
+#   - hot-pixel census vs temperature
+# July-9 only produced an UPPER LIMIT because the cooler never reached -20 C;
+# the stabilization gate + achieved-T logging is the fix.
+
+uses: palette.yaml
+session: "20260717"          # data -> FITSDATA/20260717/<subdir>/
+observer: "POLITE"
+telescope: "CDK20"
+observatory: "Julian, CA"
+base_data_dir: FITSDATA
+naming: polite
+calibrate_stage: before      # all-calibration plan; entries run in listed order
+
+# SAME operating point as 2026-07-09 (comparability with the existing
+# characterization): Mode 0, gain 0, offset 30. egain/ron are CLAIMED values
+# for headers only -- measuring egain is the point of the PTC twilight plan.
+camera:
+  readout_mode: 0
+  readout_mode_name: "Mode 0"
+  gain: 0
+  offset: 30
+  egain_e_per_adu: 1.0
+  ron_e: 3.5
+  cooler_setpoint_c: -10.0   # per-invocation override: --setpoint
+  pixel_size_um: 3.76
+  plate_scale_arcsec: 0.224
+
+bricks:
+  # filter: Dark on EVERY frame -- opaque slot stands in for the missing shutter.
+  biasT: {type: cal, frame: BIAS, exp: 0, n: 25, filter: Dark}
+  # Exposure ladder for the dark-current slope. 300 s is the long anchor: at
+  # -10 C an IMX571-class sensor accumulates well under 1 e-/px in 300 s, but
+  # the frame-mean over 26 Mpix resolves it against the measured 0.036 ADU
+  # bias stability. ~41 min capture per temperature point.
+  darksT:
+    type: cal_multi
+    frames:
+      - {frame: DARK, exp: 5,   n: 5, filter: Dark}
+      - {frame: DARK, exp: 60,  n: 5, filter: Dark}
+      - {frame: DARK, exp: 150, n: 5, filter: Dark}
+      - {frame: DARK, exp: 300, n: 5, filter: Dark}
+
+qa_gates:
+  # RON/mean targets anchored to July-9 MEASURED values (5.6 ADU RON, 491 ADU
+  # bias median at this operating point), not the unverified 3.5 e- spec.
+  - after_cal: biasT
+    handler: bias_qa
+    args: {abort_on_fail: false, ron_target_e: 5.6, ron_tol_e: 1.5, mean_hi: 600}
+
+plan:
+  - cal: [biasT, darksT]

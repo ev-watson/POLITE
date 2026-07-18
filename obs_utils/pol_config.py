@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Union
 from poltools import (
     SessionDetectorConfig,
     load_pol_config_sidecar,
+    nominal_beam_separation_px,
     polconfig_from_detector,
     polconfig_snapshot,
     write_pol_config_sidecar as _write_sidecar,
@@ -17,7 +18,12 @@ from .session_context import SessionCaptureContext
 
 
 def _ctx_to_detector(ctx: SessionCaptureContext) -> SessionDetectorConfig:
-    beam_sep = 60.0
+    # Fall back to the manufacturer-nominal Savart separation (0.9 mm ≈ 239 px on
+    # the QHY268M), NOT an arbitrary placeholder, so an uncharacterized session
+    # still writes a physically anchored geometry. Derive from the actual pixel
+    # size when the context carries one.
+    pixel_um = getattr(ctx, "pixel_size_um", None) or 3.76
+    beam_sep = nominal_beam_separation_px(pixel_um)
     beam_pa = 0.0
     beam_characterized = False
     if ctx.filters:

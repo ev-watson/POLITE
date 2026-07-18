@@ -16,7 +16,7 @@ from alpyca_tools.fits_writer import FitsHeaderConfig, capture_fits
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Take an Alpaca exposure and write FITS.")
-    parser.add_argument("--host", default="localhost:11111", help="Alpaca host or host:port")
+    parser.add_argument("--host", default="localhost:11112", help="POLITE QHY Alpaca camera host or host:port")
     parser.add_argument("--camera", type=int, default=0, help="Camera device number")
     parser.add_argument("--exposure", type=float, default=1.0, help="Exposure time in seconds")
     parser.add_argument("--light", action="store_true", help="Light frame (default)")

@@ -63,9 +63,7 @@ def _collect_paths(paths: Sequence[Union[str, Path]]) -> List[Path]:
     for p in paths:
         pp = Path(p)
         if pp.is_dir():
-            # accept both .fits and .fit (TheSkyX / QHY server variants)
-            for pat in ("*.fits", "*.fit"):
-                out.extend(sorted(pp.glob(pat)))
+            out.extend(sorted(pp.glob("*.fits")))
         elif pp.is_file():
             out.append(pp)
     # de-dup while preserving order

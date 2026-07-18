@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import numpy as np
-from astropy.io import fits
 
 from alpyca_tools.fits_writer import DetectorCards, FitsHeaderConfig, build_header
 from obs_utils.fits_routine import CaptureConfig, DetectorCards as RoutineDetectorCards, _build_header
@@ -41,6 +40,7 @@ def test_fits_writer_detector_cards():
 
 
 def test_fits_routine_detector_cards_match():
+    assert RoutineDetectorCards is DetectorCards
     det = RoutineDetectorCards(
         gain_setting=0,
         egain_e_per_adu=1.0,
@@ -55,3 +55,21 @@ def test_fits_routine_detector_cards_match():
     hdr = _build_header(_FakeCamera(), cfg, np.dtype(np.uint16), (100, 100))
     for key in ("GAIN", "EGAIN", "READMODE", "SET-TEMP", "XPIXSZ", "YPIXSZ"):
         assert key in hdr
+
+
+def test_shared_header_contains_required_grouping_and_detector_cards():
+    cfg = FitsHeaderConfig(
+        imagetyp="dark",
+        exposure_s=0.25,
+        date_obs="2026-07-10T02:00:00.000",
+        instrument="sim-detector",
+        detector=DetectorCards(egain_e_per_adu=1.2, pixel_size_um=3.76),
+    )
+    hdr = build_header(None, cfg, np.dtype(np.uint16), (2, 2))
+    assert hdr["IMAGETYP"] == "DARK"
+    assert hdr["EXPTIME"] == 0.25
+    assert hdr["DATE-OBS"] == "2026-07-10T02:00:00.000"
+    assert hdr["INSTRUME"] == "sim-detector"
+    assert hdr["EGAIN"] == 1.2
+    assert hdr["XPIXSZ"] == 3.76
+    assert hdr["BZERO"] == 32768

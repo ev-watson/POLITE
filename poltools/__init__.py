@@ -22,6 +22,8 @@ Depends on ``caltools`` for FITS I/O and :class:`~caltools.SensorConfig`.
 __version__ = "0.1.0"
 
 from ._types import (
+    QHY268M_PIXEL_SIZE_UM,
+    SAVART_BEAM_SEPARATION_MM,
     BeamFlux,
     BeamGeometry,
     FilterConfig,
@@ -29,6 +31,8 @@ from ._types import (
     PolConfig,
     StokesResult,
     default_efw_filters,
+    nominal_beam_separation_px,
+    validate_beam_separation,
 )
 from .mueller import (
     M_hwp,
@@ -90,6 +94,8 @@ from .pipeline import reduce_pol_sequences, reduce_to_stokes
 __all__ = [
     "__version__",
     "PolConfig", "BeamGeometry", "FilterConfig", "default_efw_filters",
+    "nominal_beam_separation_px", "validate_beam_separation",
+    "SAVART_BEAM_SEPARATION_MM", "QHY268M_PIXEL_SIZE_UM",
     "PointSource", "BeamFlux", "StokesResult",
     "stokes_vector", "M_rotator", "M_retarder", "M_hwp", "M_linear_polarizer",
     "system_mueller", "oe_intensities",

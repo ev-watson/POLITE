@@ -8,7 +8,6 @@ FITS writer records the Savart provenance cards.
 
 import warnings
 
-import numpy as np
 import pytest
 from astropy.io import fits
 from astropy.table import Table
@@ -161,7 +160,7 @@ def test_instrot_varies_warns(sensor, rng, tmp_path):
     for i, ang in enumerate(ANGLES4):
         frame = pt.render_frame(scene, cfg, ang, exptime_s=3.0, rng=rng,
                                 shape=(96, 96), sky_e_per_px=20.0)
-        p = pt.write_pol_fits(tmp_path / f"f{i}.fit", frame, ang, cfg,
+        p = pt.write_pol_fits(tmp_path / f"f{i}.fits", frame, ang, cfg,
                               seq_index=i, extra={"INSTROT": float(i)})  # drifts
         paths.append(str(p))
     with pytest.warns(UserWarning, match="INSTROT"):
@@ -193,7 +192,7 @@ def test_write_pol_fits_savart_cards(sensor, rng, tmp_path):
     scene = pt.make_scene([(40.0, 40.0)], [(1, 0.0, 0.0, 0)], [2e5])
     frame = pt.render_frame(scene, cfg, 0.0, exptime_s=2.0, rng=rng,
                             shape=(96, 96))
-    p = pt.write_pol_fits(tmp_path / "v.fit", frame, 0.0, cfg)
+    p = pt.write_pol_fits(tmp_path / "v.fits", frame, 0.0, cfg)
     hdr = fits.getheader(str(p))
     assert hdr["SAVMAT"] == "alpha-BBO"
     assert hdr["SAVTHK"] == 18.0

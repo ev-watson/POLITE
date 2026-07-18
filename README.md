@@ -31,7 +31,7 @@ obs_utils/               Observatory control modules
   autoguide.py           Autoguiding and dithering
   platesolve.py          Plate solving interface
   pointing.py            Pointing model utilities
-  fits_routine.py        FITS file handling
+  fits_routine.py        Compatibility wrapper for the authoritative FITS writer
   logging.py             Session logging configuration
   user_config.py         Site-specific hardware configuration
 
@@ -106,7 +106,7 @@ Detector characterization:
 ```python
 import caltools as ct
 
-config = ct.sensor_config_from_header("frame.fit", gain=0.5)
+config = ct.sensor_config_from_header("frame.fits", gain=0.5)
 bias = ct.master_bias(bias_paths)
 rn_map, ts_map = ct.read_noise_map_from_paths(bias_paths)
 ptc = ct.photon_transfer_curve(flat_groups, bias, config)

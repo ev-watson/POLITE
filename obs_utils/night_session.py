@@ -78,7 +78,7 @@ class NightSessionConfig:
     auto_metadata: bool = True
     stop_on_error: bool = True
     capture_context: Optional[SessionCaptureContext] = None
-    naming: Literal["legacy", "polite"] = "legacy"
+    naming: Literal["legacy", "polite"] = "polite"
     calibration_before: List[FramePlan] = field(default_factory=list)
     calibration_after: List[FramePlan] = field(default_factory=list)
     qa_gates: List[QAGate] = field(default_factory=list)

@@ -57,23 +57,30 @@ def dispatch_qa_gate(
     args = dict(gate.args)
     abort = bool(args.pop("abort_on_fail", False))
 
-    if gate.handler == "bias_qa":
-        result = fn(session_dir, **args)
-    elif gate.handler == "sequence_audit":
-        result = fn(session_dir, **args)
-    elif gate.handler in ("first_light_qa", "flat_quality_gate"):
-        slug = (target_name or "").replace(" ", "_").replace("+", "")
-        paths = sorted(session_dir.glob(f"*{slug}*")) if slug else []
-        if not paths:
-            paths = sorted(session_dir.glob("*.fits"))
-        sidecar = session_dir / "pol_config.yaml"
-        result = fn(
-            paths,
-            pol_config_path=sidecar if sidecar.exists() else None,
-            **args,
-        )
-    else:
-        result = fn(session_dir, **args)
+    try:
+        if gate.handler == "bias_qa":
+            # run_bias_qa takes a *sequence* of files/dirs and globs each dir
+            # non-recursively; cal frames land in <session_dir>/calibrations/.
+            dirs = [d for d in (session_dir, session_dir / "calibrations") if d.is_dir()]
+            result = fn(dirs, **args)
+        elif gate.handler == "sequence_audit":
+            result = fn(session_dir, **args)
+        elif gate.handler in ("first_light_qa", "flat_quality_gate"):
+            slug = (target_name or "").replace(" ", "_").replace("+", "")
+            paths = sorted(session_dir.glob(f"*{slug}*")) if slug else []
+            if not paths:
+                paths = sorted(session_dir.glob("*.fits"))
+            sidecar = session_dir / "pol_config.yaml"
+            result = fn(
+                paths,
+                pol_config_path=sidecar if sidecar.exists() else None,
+                **args,
+            )
+        else:
+            result = fn(session_dir, **args)
+    except Exception as exc:  # a QA gate must never kill a capture night
+        logger.error("QA gate %s raised", gate.handler, exc_info=True)
+        result = QAResult(gate.handler, False, [f"handler raised: {exc}"])
 
     who = target_name or cal_brick
     log = logger.error if result.level == "FAIL" else (

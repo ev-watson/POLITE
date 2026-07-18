@@ -301,18 +301,32 @@ def reduce_sequence(
 
     vector_array = np.asarray(vectors, dtype=float)
     plate_scale = float(fits.getheader(paths[0]).get("PIXSCALE", 0.224))
-    geometry = {
-        "n_pair_detections": len(vectors),
-        "dx_mean_px": float(np.mean(vector_array[:, 0])),
-        "dx_std_px": float(np.std(vector_array[:, 0], ddof=1)),
-        "dy_mean_px": float(np.mean(vector_array[:, 1])),
-        "dy_std_px": float(np.std(vector_array[:, 1], ddof=1)),
-        "separation_mean_px": float(np.mean(np.hypot(vector_array[:, 0], vector_array[:, 1]))),
-        "position_angle_detector_deg": float(
-            np.rad2deg(np.arctan2(np.mean(vector_array[:, 0]),
-                                  np.mean(vector_array[:, 1]))) % 360.0
-        ),
-    }
+    if vector_array.ndim == 2 and len(vector_array) >= 1:
+        geometry = {
+            "n_pair_detections": len(vectors),
+            "dx_mean_px": float(np.mean(vector_array[:, 0])),
+            "dx_std_px": float(np.std(vector_array[:, 0], ddof=1)) if len(vectors) > 1 else float("nan"),
+            "dy_mean_px": float(np.mean(vector_array[:, 1])),
+            "dy_std_px": float(np.std(vector_array[:, 1], ddof=1)) if len(vectors) > 1 else float("nan"),
+            "separation_mean_px": float(np.mean(np.hypot(vector_array[:, 0], vector_array[:, 1]))),
+            "position_angle_detector_deg": float(
+                np.rad2deg(np.arctan2(np.mean(vector_array[:, 0]),
+                                      np.mean(vector_array[:, 1]))) % 360.0
+            ),
+        }
+    else:
+        # No matched beam pair survived detection in this block. This is itself a
+        # meaningful commissioning result (e.g. the +45deg rotated block, whose
+        # untracked source drifted off-detector) rather than an error.
+        geometry = {
+            "n_pair_detections": 0,
+            "dx_mean_px": None,
+            "dx_std_px": None,
+            "dy_mean_px": None,
+            "dy_std_px": None,
+            "separation_mean_px": None,
+            "position_angle_detector_deg": None,
+        }
     drift = _fit_drift(rows, plate_scale)
     modulation = _fit_modulation(rows)
     result = {

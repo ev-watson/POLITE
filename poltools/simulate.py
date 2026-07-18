@@ -13,7 +13,7 @@ as ideal; per-filter Savart geometry is selected with :meth:`PolConfig.for_filte
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from typing import List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
@@ -152,7 +152,7 @@ def simulate_sequence(
             sources, cfg, ang, exptime_s=exptime_s, seeing_arcsec=seeing_arcsec,
             sky_e_per_px=sky_e_per_px, rng=rng, shape=shape, **render_kwargs,
         )
-        fname = f"{seq_id}_{i:02d}_hwp{ang:05.1f}.fit"
+        fname = f"{seq_id}_{i:02d}_hwp{ang:05.1f}.fits"
         p = pol_io.write_pol_fits(
             out_dir / fname, frame, ang, cfg, object_name=object_name,
             exptime_s=exptime_s, imagetyp="LIGHT", seq_id=seq_id, seq_index=i,

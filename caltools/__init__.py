@@ -12,7 +12,6 @@ __version__ = "0.1.0"
 from ._types import AnalysisResult, Frame, FrameCube, ROI, SensorConfig
 
 from .io import (
-    get_file_index,
     get_timestamps,
     group_by_type_and_exposure,
     load_cube,
@@ -79,7 +78,6 @@ __all__ = [
     "sensor_config_from_header",
     "group_by_type_and_exposure",
     "get_timestamps",
-    "get_file_index",
     "master_bias",
     "master_dark",
     "master_flat",

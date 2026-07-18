@@ -14,9 +14,15 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 from astropy.io import fits
-from astropy.time import Time
 
 import caltools as ct
+from alpyca_tools.fits_writer import (
+    DetectorCards,
+    FitsHeaderConfig,
+    PolarimetryCards,
+    build_header,
+    write_fits,
+)
 from ._types import PolConfig
 
 POL_KEYWORDS = {
@@ -57,54 +63,55 @@ def write_pol_fits(
 ) -> Path:
     """Write a polarimetry frame with standard metadata.
 
-    Data are stored as ``uint16`` physical ADU with ``BZERO=32768``.
+    Data are stored as ``uint16`` physical ADU with ``BZERO=32768`` using the
+    same writer and header contract as live Alpaca acquisition.
     """
     out = Path(path).expanduser().resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
 
     arr = np.clip(np.rint(data_adu), 0, (1 << cfg.sensor.bitdepth) - 1).astype(np.uint16)
-    hdr = fits.Header()
-    hdr["COMMENT"] = "POLITE simulated polarimetry frame (poltools.simulate)"
+    from astropy.time import Time
 
-    hdr["EXPTIME"] = (float(exptime_s), "Exposure time [s]")
-    hdr["EXPOSURE"] = (float(exptime_s), "Exposure time [s]")
-    hdr["DATE-OBS"] = (date_obs or Time.now().isot, "Exposure start (UTC)")
-    hdr["TIMESYS"] = ("UTC", "Time system")
-    hdr["IMAGETYP"] = (imagetyp.upper(), "Image type")
-    hdr["OBJECT"] = (object_name, "Target name")
-    hdr["INSTRUME"] = (cfg.sensor.sensor_name, "Instrument/sensor name")
-    hdr["XPIXSZ"] = (float(cfg.sensor.pixel_size_um), "Pixel size [um]")
-    hdr["YPIXSZ"] = (float(cfg.sensor.pixel_size_um), "Pixel size [um]")
-    hdr["CCD-TEMP"] = (float(cfg.sensor.temperature_c), "Detector temperature [C]")
-    hdr["FILTER"] = (cfg.filter_name, "Filter name")
-    hdr["XBINNING"] = (1, "Binning factor in X")
-    hdr["YBINNING"] = (1, "Binning factor in Y")
-
-    hdr["EGAIN"] = (float(cfg.sensor.gain_e_per_adu), POL_KEYWORDS["EGAIN"])
-    hdr["PIXSCALE"] = (float(cfg.plate_scale_arcsec), POL_KEYWORDS["PIXSCALE"])
-    hdr["HWPANG"] = (float(hwp_deg), POL_KEYWORDS["HWPANG"])
-    hdr["RETARD"] = (float(cfg.retardance_deg), POL_KEYWORDS["RETARD"])
-    hdr["INSTROT"] = (float(cfg.instrument_rotator_deg), POL_KEYWORDS["INSTROT"])
-    hdr["POLBEAM"] = ("dual", POL_KEYWORDS["POLBEAM"])
-    hdr["POLSEQ"] = (str(seq_id), POL_KEYWORDS["POLSEQ"])
-    hdr["POLSEQN"] = (int(seq_index), POL_KEYWORDS["POLSEQN"])
-    hdr["POLEFF"] = (float(efficiency), POL_KEYWORDS["POLEFF"])
-    hdr["BEAMSEP"] = (float(cfg.beam.separation_px), "o<->e beam separation [px]")
-    hdr["BEAMPA"] = (float(cfg.beam.position_angle_deg), "o->e split position angle [deg]")
-    hdr["SAVMAT"] = (SAVART_MATERIAL, POL_KEYWORDS["SAVMAT"])
-    hdr["SAVTHK"] = (SAVART_THICKNESS_MM, POL_KEYWORDS["SAVTHK"])
+    header_cfg = FitsHeaderConfig(
+        imagetyp=imagetyp,
+        exposure_s=float(exptime_s),
+        date_obs=date_obs or Time.now().isot,
+        object_name=object_name,
+        instrument=cfg.sensor.sensor_name,
+        filter_name=cfg.filter_name,
+        detector=DetectorCards(
+            gain_setting=int(cfg.gain_setting),
+            readout_mode=int("".join(ch for ch in cfg.readout_mode if ch.isdigit()) or 0),
+            readout_mode_name=str(cfg.readout_mode),
+            egain_e_per_adu=float(cfg.sensor.gain_e_per_adu),
+            cooler_setpoint_c=float(cfg.sensor.temperature_c),
+            pixel_size_um=float(cfg.sensor.pixel_size_um),
+            ron_e=float(cfg.read_noise_e),
+        ),
+        polarimetry=PolarimetryCards(
+            hwp_angle_deg=float(hwp_deg),
+            retardance_deg=float(cfg.retardance_deg),
+            instrument_rotator_deg=float(cfg.instrument_rotator_deg),
+            pol_beam="dual",
+            pol_seq_id=str(seq_id),
+            pol_seq_index=int(seq_index),
+            pol_efficiency=float(efficiency),
+            beam_sep_px=float(cfg.beam.separation_px),
+            beam_pa_deg=float(cfg.beam.position_angle_deg),
+            savart_material=SAVART_MATERIAL,
+            savart_thickness_mm=SAVART_THICKNESS_MM,
+        ),
+        extra_cards={"PIXSCALE": (float(cfg.plate_scale_arcsec), POL_KEYWORDS["PIXSCALE"])},
+    )
     _fcfg = cfg.active_filter()
     if _fcfg is not None and _fcfg.eff_wavelength_nm is not None:
-        hdr["WAVELEN"] = (float(_fcfg.eff_wavelength_nm), POL_KEYWORDS["WAVELEN"])
+        header_cfg.polarimetry.eff_wavelength_nm = float(_fcfg.eff_wavelength_nm)
 
     if extra:
-        for k, v in extra.items():
-            hdr[k] = v
+        header_cfg.extra_cards.update(extra)
 
-    hdr["HISTORY"] = "Created by poltools.io.write_pol_fits"
-    hdu = fits.PrimaryHDU(data=arr, header=hdr)
-    hdu.writeto(out, overwrite=True, output_verify="fix")
-    return out
+    header = build_header(None, header_cfg, data_dtype=arr.dtype, shape=arr.shape)
+    return write_fits(out, arr, header, add_checksum=header_cfg.add_checksum)
 
 
 def _read_hwp_angle(hdr: fits.Header, path: Union[str, Path]) -> float:

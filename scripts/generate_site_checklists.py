@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Sequence
 
 from fpdf import FPDF
-from fpdf.enums import XPos, YPos
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -444,7 +443,7 @@ def before_observations_checklist() -> Path:
     ("Drivers and device software (observatory PC)", [
       ("ASCOM Platform 6.6+ present - confirm version", False),
       ("ASCOM Remote Server installed and exposing devices on Alpaca :11111 (separate from the Platform)", False),
-      ("QHY camera driver (QHYCCD All-In-One / SDK) + ASCOM QHY driver", False),
+      ("QHYCCD SDK installed; POLITE qhy_alpaca server configured (no FITS output in the server)", False),
       ("ZWO EFW filter-wheel driver + ASCOM driver", False),
       ("Optec Pyxis rotator ASCOM driver (drives the HWP rotator)", False),
       ("PWI4 (PlaneWave) installed; listening on :8220; pointing model file present", False),
@@ -455,17 +454,17 @@ def before_observations_checklist() -> Path:
       ("QHY Alpaca server deps installed (scripts\\install_qhy_alpaca_deps.ps1)", False),
       ("astroquery import works (automated asteroid ephemerides), or JPL Horizons manual fallback ready", False),
     ]),
-    ("QHY268M SDK-direct camera (bypasses broken ASCOM QHY driver)", [
+    ("QHY268M POLITE QHY Alpaca camera (ImageBytes pixel transport)", [
       ("Scan lists QHY268M (set $env:QHYCCD_DLL if needed)", False),
       ("Camera server responds on :11112", False),
-      ("qhy_alpaca_smoke_test.py writes a FITS", False),
+      ("alpyca_tools/scripts/snap_fits.py retrieves ImageBytes and writes FITS via fits_writer", False),
       ("observatory_smoke_test.py passes (needs PWI4 + Remote Server for EFW/Pyxis)", False),
     ]),
     ("ASCOM / Alpaca bring-up (EFW + Pyxis on :11111)", [
       ("ASCOM Remote Server running; EFW + Pyxis on Alpaca :11111 (QHY camera is on :11112)", False),
       ("PWI4 GUI running (:8220); mount homed; pointing model loaded; rotator + focuser connected", False),
       ("Pyxis HWP reachable as an Alpaca rotator; EFW initialized (V and R slots correct)", False),
-      ("user_config.py device indices match the Remote Server (camera / wheel / rotator)", False),
+      ("user_config.py camera endpoint/device and Remote Server wheel/rotator indices match", False),
       ("Observatory PC clock is NTP-synced (DATE-OBS and asteroid ephemerides depend on it; timing cards read the clock)", False),
       ("python scripts/observatory_smoke_test.py - home, slew, HWP move, one FITS", False),
     ]),

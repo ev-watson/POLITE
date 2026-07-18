@@ -55,6 +55,13 @@ class PolarimetryCards:
 @dataclass
 class FitsHeaderConfig:
     imagetyp: str = "LIGHT"
+    # These fields make the writer usable by both live Alpaca capture and the
+    # simulator. Live capture normally obtains them from ``camera``; simulated
+    # frames must provide them explicitly.
+    exposure_s: Optional[float] = None
+    date_obs: Optional[str] = None
+    binx: int = 1
+    biny: int = 1
     object_name: Optional[str] = None
     observer: Optional[str] = None
     telescope: Optional[str] = None
@@ -85,7 +92,7 @@ def _set_card(hdr: fits.Header, key: str, value: Any, comment: Optional[str] = N
 
 
 def build_header(
-    camera: CameraDevice,
+    camera: Optional[CameraDevice],
     cfg: FitsHeaderConfig,
     data_dtype: np.dtype,
     shape: Tuple[int, ...],
@@ -93,21 +100,33 @@ def build_header(
     hdr = fits.Header()
     hdr["COMMENT"] = "FITS header populated by alpyca_tools"
 
+    exposure_s = cfg.exposure_s
+    if exposure_s is None and camera is not None:
+        exposure_s = getattr(camera, "LastExposureDuration", None)
+    if exposure_s is None:
+        raise ValueError("FITS header requires exposure_s or camera.LastExposureDuration")
+
+    date_obs = cfg.date_obs
+    if date_obs is None and camera is not None:
+        date_obs = getattr(camera, "LastExposureStartTime", None)
+    if date_obs is None:
+        raise ValueError("FITS header requires date_obs or camera.LastExposureStartTime")
+
     if data_dtype == np.dtype(np.uint16):
         _set_card(hdr, "BZERO", 32768.0, "Data zero point")
         _set_card(hdr, "BSCALE", 1.0, "Data scale factor")
 
-    _set_card(hdr, "EXPTIME", float(camera.LastExposureDuration), "Exposure time [s]")
-    _set_card(hdr, "EXPOSURE", float(camera.LastExposureDuration), "Exposure time [s]")
-    _set_card(hdr, "DATE-OBS", str(camera.LastExposureStartTime), "Exposure start time")
+    _set_card(hdr, "EXPTIME", float(exposure_s), "Exposure time [s]")
+    _set_card(hdr, "EXPOSURE", float(exposure_s), "Exposure time [s]")
+    _set_card(hdr, "DATE-OBS", str(date_obs), "Exposure start time")
     _set_card(hdr, "TIMESYS", "UTC", "Time system")
     if cfg.timing is not None:
         from obs_utils.timing import stamp_timing_cards
 
         stamp_timing_cards(hdr, cfg.timing, cfg.filter_wheel_state)
 
-    _set_card(hdr, "XBINNING", int(camera.BinX), "Binning factor in X")
-    _set_card(hdr, "YBINNING", int(camera.BinY), "Binning factor in Y")
+    _set_card(hdr, "XBINNING", int(getattr(camera, "BinX", cfg.binx)), "Binning factor in X")
+    _set_card(hdr, "YBINNING", int(getattr(camera, "BinY", cfg.biny)), "Binning factor in Y")
 
     _set_card(hdr, "IMAGETYP", cfg.imagetyp.upper(), "Image type (LIGHT/DARK/BIAS/FLAT)")
     _set_card(hdr, "OBSTYPE", cfg.imagetyp.upper(), "Image type")
@@ -117,33 +136,38 @@ def build_header(
     _set_card(hdr, "TELESCOP", cfg.telescope, "Telescope")
     _set_card(hdr, "OBSERVAT", cfg.observatory, "Observatory/site")
 
-    instrume = cfg.instrument if cfg.instrument is not None else getattr(camera, "SensorName", None)
+    instrume = cfg.instrument
+    if instrume is None and camera is not None:
+        instrume = getattr(camera, "SensorName", None)
     _set_card(hdr, "INSTRUME", instrume, "Instrument/sensor name")
 
-    try:
-        gain_val = int(camera.Gain)
-        if cfg.detector is not None and cfg.detector.gain_setting is not None:
-            gain_val = int(cfg.detector.gain_setting)
-        _set_card(hdr, "GAIN", gain_val, "QHY gain index, not e-/ADU")
-    except Exception:
-        pass
+    if camera is not None:
+        try:
+            gain_val = int(camera.Gain)
+            if cfg.detector is not None and cfg.detector.gain_setting is not None:
+                gain_val = int(cfg.detector.gain_setting)
+            _set_card(hdr, "GAIN", gain_val, "Camera gain index, not e-/ADU")
+        except Exception:
+            pass
 
-    try:
-        off = camera.Offset
-        if cfg.detector is not None and cfg.detector.offset_setting is not None:
-            off = cfg.detector.offset_setting
-        if isinstance(off, (int, np.integer)):
-            _set_card(hdr, "OFFSET", int(off), "Camera offset setting")
-            _set_card(hdr, "PEDESTAL", int(off), "Bias pedestal (if applicable)")
-        else:
-            _set_card(hdr, "OFFSET", off, "Camera offset setting")
-    except Exception:
-        pass
+    if camera is not None:
+        try:
+            off = camera.Offset
+            if cfg.detector is not None and cfg.detector.offset_setting is not None:
+                off = cfg.detector.offset_setting
+            if isinstance(off, (int, np.integer)):
+                _set_card(hdr, "OFFSET", int(off), "Camera offset setting")
+                _set_card(hdr, "PEDESTAL", int(off), "Bias pedestal (if applicable)")
+            else:
+                _set_card(hdr, "OFFSET", off, "Camera offset setting")
+        except Exception:
+            pass
 
-    try:
-        _set_card(hdr, "CCD-TEMP", float(camera.CCDTemperature), "Detector temperature [C]")
-    except Exception:
-        pass
+    if camera is not None:
+        try:
+            _set_card(hdr, "CCD-TEMP", float(camera.CCDTemperature), "Detector temperature [C]")
+        except Exception:
+            pass
 
     det = cfg.detector
     if det is not None:
@@ -155,6 +179,16 @@ def build_header(
             _set_card(hdr, "XPIXSZ", det.pixel_size_um, "Pixel size X [um]")
             _set_card(hdr, "YPIXSZ", det.pixel_size_um, "Pixel size Y [um]")
         _set_card(hdr, "RON", det.ron_e, "Read noise [e-]")
+
+    # Camera properties are authoritative when no explicit detector card was
+    # supplied. Never substitute a model-specific pixel-size or gain default.
+    if camera is not None:
+        if "XPIXSZ" not in hdr:
+            _set_card(hdr, "XPIXSZ", getattr(camera, "PixelSizeX", None), "Pixel size X [um]")
+        if "YPIXSZ" not in hdr:
+            _set_card(hdr, "YPIXSZ", getattr(camera, "PixelSizeY", None), "Pixel size Y [um]")
+        if "READMODE" not in hdr:
+            _set_card(hdr, "READMODE", getattr(camera, "ReadoutMode", None), "Readout mode index")
 
     _set_card(hdr, "FILTER", cfg.filter_name, "Filter name")
 

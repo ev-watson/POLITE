@@ -303,7 +303,7 @@ def build_config(
         telescope=doc.get("telescope"),
         observatory=doc.get("observatory"),
         capture_context=session_context_from_yaml(doc.get("camera")),
-        naming=doc.get("naming", "legacy"),
+        naming=doc.get("naming", "polite"),
         qa_gates=qa_gates,
         catalog=dict(catalog),
     )

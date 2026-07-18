@@ -1,0 +1,77 @@
+# PTC TWILIGHT plan - 2026-07-17 (Julian) - OPPORTUNISTIC, cloud-tolerant
+# Goal: conversion gain (e-/ADU) + full-well from a photon-transfer curve, the
+# two headline numbers July-9 could not produce (no illumination source). The
+# source is the DIFFUSE OVERCAST TWILIGHT SKY through the full optical train at
+# the fixed (dead-DEC) pointing. No telescope motion, no HWP motion (the HWP
+# sits in the beam at whatever angle it holds -- constant, which is all PTC
+# needs). The Savart doubles the sky onto itself; a uniform diffuse source
+# stays uniform.
+#
+# METHOD (flagged per project rules): the PTC mean-variance pair method is
+# ESTABLISHED (Janesick 2007; EMVA 1288). Using decaying cloudy twilight as
+# the illumination source is NOT the standard bench setup: illumination drifts
+# between the two frames of a pair (seconds apart -> ~1-2%, correctable by
+# scaling one frame of each pair in reduction) and absolute-linearity /
+# PRNU / QE remain OUT OF SCOPE (they need a stable uniform source).
+# Adequacy for gain + full-well from this data: CONJECTURED until reduced.
+#
+# >>> WINDOW (computed for 32.94779 N, 116.30239 W, 2026-07-17) <<<
+#   sunset 19:49 PDT | civil dusk (-6) 20:21 | -8 20:32 | nautical (-12) 20:55
+# Under overcast the usable flux window is roughly 19:45-20:40 PDT. Moon ~17%,
+# irrelevant under cloud.
+#
+# >>> HOW TO RUN <<<
+#   scripts/run_calibration_night.py night_plans/20260717_ptc_twilight.yaml                  # dry-run
+#   scripts/run_calibration_night.py night_plans/20260717_ptc_twilight.yaml --run --no-cooler-wait
+# --no-cooler-wait because twilight is time-critical; set --setpoint -10 earlier
+# so the sensor is already cold, or accept per-frame CCD-TEMP as truth.
+# CONSOLE TUNE before the first sweep: take the dry-run, then one test frame
+# (e.g. rerun with only the 1 s step) and scale ALL exposures by a common
+# factor so the LONGEST step is just saturated at sweep start. Then invoke the
+# plan ~3 times across the window (each invocation auto-writes its own
+# ptc_twilight_<HHMM>/ subdir); the fading sky sweeps the levels down through
+# the full range: saturation -> read-noise floor.
+# NEVER use plan_night.py --run (it homes the mount -> disconnects dead DEC).
+
+uses: palette.yaml
+session: "20260717"          # data -> FITSDATA/20260717/<subdir>/
+observer: "POLITE"
+telescope: "CDK20"
+observatory: "Julian, CA"
+base_data_dir: FITSDATA
+naming: polite
+calibrate_stage: before      # all-calibration plan; entries run in listed order
+
+# Same operating point as darkcal + July-9 (Mode 0, gain 0, offset 30).
+camera:
+  readout_mode: 0
+  readout_mode_name: "Mode 0"
+  gain: 0
+  offset: 30
+  egain_e_per_adu: 1.0
+  ron_e: 3.5
+  cooler_setpoint_c: -10.0
+  pixel_size_um: 3.76
+  plate_scale_arcsec: 0.224
+
+bricks:
+  # Exposure ladder, n=4 per step = 2 PTC pairs per level per sweep. Spans 80x;
+  # combined with sky decay across ~3 sweeps that covers saturation down to the
+  # noise floor. IMAGETYP=FLAT is honest: these ARE illuminated frames.
+  # V filter: the science band, and the July-9 regime.
+  ptc_ladder:
+    type: cal_multi
+    frames:
+      - {frame: FLAT, exp: 0.1, n: 4, filter: "Photometric V"}
+      - {frame: FLAT, exp: 0.2, n: 4, filter: "Photometric V"}
+      - {frame: FLAT, exp: 0.5, n: 4, filter: "Photometric V"}
+      - {frame: FLAT, exp: 1.0, n: 4, filter: "Photometric V"}
+      - {frame: FLAT, exp: 2.0, n: 4, filter: "Photometric V"}
+      - {frame: FLAT, exp: 4.0, n: 4, filter: "Photometric V"}
+      - {frame: FLAT, exp: 8.0, n: 4, filter: "Photometric V"}
+  # Small trailing bias stack (through the opaque Dark slot) so each sweep is a
+  # self-contained PTC dataset even if the darkcal master bias is at another T.
+  ptc_bias: {type: cal, frame: BIAS, exp: 0, n: 10, filter: Dark}
+
+plan:
+  - cal: [ptc_ladder, ptc_bias]

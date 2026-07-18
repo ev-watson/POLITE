@@ -6,6 +6,11 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from .alpaca import ImagingSession, open_imaging_session
+from .alpaca_servers import (
+    AlpacaServerStatus,
+    start_observatory_alpaca_servers,
+    uses_local_observatory_alpaca_servers,
+)
 from .config import AlpacaConfig, Pwi4Config, SlewLimits, default_sky_regions
 from .logging import LogPaths, LoggingConfig, setup_logging
 from .mount import (
@@ -32,6 +37,10 @@ class StartupConfig:
     slew_time_constant_s: Optional[float] = None
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     timing: TimingConfig = field(default_factory=TimingConfig)
+    # In the observatory's Windows two-server layout, start ASCOM Remote and
+    # the QHY SDK-direct Alpaca server before connecting any devices. Lab and
+    # remote-host configurations are detected and left unchanged.
+    launch_local_alpaca_servers: bool = True
 
 
 @dataclass
@@ -41,6 +50,7 @@ class StartupState:
     slew_limits: SlewLimits
     log_paths: Optional[LogPaths] = None
     ntp_status: Optional[NtpStatus] = None
+    alpaca_servers: Optional[AlpacaServerStatus] = None
 
 
 def _connect_rotator(pwi4: PWI4, poll_s: float = 0.5) -> None:
@@ -105,6 +115,17 @@ def startup_observatory(config: StartupConfig) -> StartupState:
             reset_handlers=log_cfg.reset_handlers,
         )
         logger.info("Logging to %s", log_paths.log_file)
+
+    alpaca_servers = None
+    if config.launch_local_alpaca_servers and uses_local_observatory_alpaca_servers(
+        config.alpaca.host, config.alpaca.camera_host
+    ):
+        # The helper only confirms the two HTTP servers.  The usual imaging
+        # session below remains responsible for connecting camera, EFW, and HWP.
+        alpaca_servers = start_observatory_alpaca_servers(
+            ascom_endpoint=config.alpaca.host,
+            qhy_endpoint=config.alpaca.camera_host,
+        )
 
     if not config.slew_limits.regions:
         config.slew_limits.regions = default_sky_regions()
@@ -171,4 +192,5 @@ def startup_observatory(config: StartupConfig) -> StartupState:
         slew_limits=config.slew_limits,
         log_paths=log_paths,
         ntp_status=ntp_status,
+        alpaca_servers=alpaca_servers,
     )

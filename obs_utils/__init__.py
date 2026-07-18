@@ -39,6 +39,15 @@ _EXPORTS = {
     "StartupConfig": (".startup", "StartupConfig"),
     "StartupState": (".startup", "StartupState"),
     "startup_observatory": (".startup", "startup_observatory"),
+    "AlpacaServerStatus": (".alpaca_servers", "AlpacaServerStatus"),
+    "start_observatory_alpaca_servers": (
+        ".alpaca_servers",
+        "start_observatory_alpaca_servers",
+    ),
+    "uses_local_observatory_alpaca_servers": (
+        ".alpaca_servers",
+        "uses_local_observatory_alpaca_servers",
+    ),
     "FilterWheelState": (".timing", "FilterWheelState"),
     "NtpStatus": (".timing", "NtpStatus"),
     "TimingConfig": (".timing", "TimingConfig"),
