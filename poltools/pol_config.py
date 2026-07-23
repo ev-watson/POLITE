@@ -28,8 +28,11 @@ class SessionDetectorConfig:
     readout_mode_name: str = "Mode 0"
     gain_setting: int = 0
     offset: int = 0
-    egain_e_per_adu: float = 1.0
-    ron_e: float = 3.5
+    # Conversion gain (e-/ADU) and read noise (e-) are per-night characterization
+    # results, NOT capture state. Unset by default; the analyst supplies them at
+    # reduction time. Never defaulted to a nominal value.
+    egain_e_per_adu: Optional[float] = None
+    ron_e: Optional[float] = None
     cooler_setpoint_c: float = -15.0
     pixel_size_um: float = 3.76
     plate_scale_arcsec: float = 0.224
@@ -47,8 +50,12 @@ def _detector_from_mapping(det: Dict[str, Any]) -> SessionDetectorConfig:
         readout_mode_name=str(det.get("readout_mode_name", "Mode 0")),
         gain_setting=int(det.get("gain_setting", det.get("gain", 0))),
         offset=int(det.get("offset", 0)),
-        egain_e_per_adu=float(det.get("egain_e_per_adu", 1.0)),
-        ron_e=float(det.get("ron_e", 3.5)),
+        egain_e_per_adu=(
+            float(det["egain_e_per_adu"])
+            if det.get("egain_e_per_adu") is not None
+            else None
+        ),
+        ron_e=float(det["ron_e"]) if det.get("ron_e") is not None else None,
         cooler_setpoint_c=float(det.get("cooler_setpoint_c", -15.0)),
         pixel_size_um=float(det.get("pixel_size_um", 3.76)),
         plate_scale_arcsec=float(det.get("plate_scale_arcsec", 0.224)),
@@ -97,7 +104,7 @@ def polconfig_from_detector(
         instrument_rotator_deg=instrument_rotator_deg,
         filter_name=filter_name,
         filters=filters,
-        read_noise_e=float(det.ron_e),
+        read_noise_e=det.ron_e,
         readout_mode=det.readout_mode_name.replace(" ", ""),
         gain_setting=det.gain_setting,
     )
@@ -175,9 +182,11 @@ def polconfig_from_fits_headers(
 ) -> PolConfig:
     """Build a :class:`PolConfig` from the shared FITS metadata contract.
 
-    Required detector and polarimetry metadata come from the FITS header.
-    Explicit keyword arguments are supported for deliberately incomplete
-    commissioning frames; no camera-model values are inferred.
+    Geometry/polarimetry metadata (GAIN, READMODE, PIXSCALE, BEAMSEP, BEAMPA,
+    INSTROT) come from the FITS header. Conversion gain (e-/ADU) and read noise
+    (e-) are per-night characterization values, NOT header state: they are used
+    only if passed explicitly (``egain_e_per_adu=`` / ``ron_e=``); otherwise they
+    stay ``None`` and reduction requires the analyst to supply them.
     """
     hdr = fits.getheader(str(path), ignore_missing_end=True)
     fname = filter_name or hdr.get("FILTER")
@@ -201,7 +210,8 @@ def polconfig_from_fits_headers(
     gain_idx = int(_required_or(gain_setting, "GAIN", "gain_setting"))
     mode_idx = int(_required_or(readout_mode, "READMODE", "readout_mode"))
     plate_scale = float(_required_or(plate_scale_arcsec, "PIXSCALE", "plate_scale_arcsec"))
-    read_noise = float(_required_or(ron_e, "RON", "ron_e"))
+    # Read noise is a per-night characterization value, not header state: optional.
+    read_noise = float(ron_e) if ron_e is not None else None
     beam_sep = float(_required_or(beam_separation_px, "BEAMSEP", "beam_separation_px"))
     beam_pa = float(_required_or(beam_position_angle_deg, "BEAMPA", "beam_position_angle_deg"))
     instrot = float(_required_or(instrument_rotator_deg, "INSTROT", "instrument_rotator_deg"))

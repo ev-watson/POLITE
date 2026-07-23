@@ -39,7 +39,7 @@ import caltools as ct  # noqa: E402
 HEADER_KEYS = (
     "DATE-OBS", "TIMESYS", "TIME-SRC", "TIMEUNC", "EXPTIME", "IMAGETYP",
     "OBJECT", "FILTER", "GAIN", "EGAIN", "OFFSET", "READMODE", "RMODE",
-    "CCD-TEMP", "SET-TEMP", "HWPANG", "POLSEQ", "POLSEQN", "INSTROT",
+    "DET-TEMP", "CCD-TEMP", "SET-TEMP", "HWPANG", "POLSEQ", "POLSEQN", "INSTROT",
     "PIXSCALE", "RA", "DEC", "AIRMASS",
 )
 
@@ -353,7 +353,9 @@ def analyze(session_dir: Path, output: Path) -> dict[str, Any]:
     valid_dates = sum(bool(row["date_obs_valid_2026"]) for row in rows)
     light_rows = [row for row in rows if row.get("IMAGETYP") == "LIGHT"]
     temperatures = [
-        float(row["CCD-TEMP"]) for row in rows if row.get("CCD-TEMP") is not None
+        float(row.get("DET-TEMP", row.get("CCD-TEMP")))
+        for row in rows
+        if row.get("DET-TEMP") is not None or row.get("CCD-TEMP") is not None
     ]
     metrics: dict[str, Any] = {
         "session_directory": str(session_dir),

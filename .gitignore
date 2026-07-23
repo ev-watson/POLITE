@@ -23,6 +23,7 @@ __pycache__/
 tmpimg/
 final-imgs/
 generated/
+paperfigs/
 
 # local dev / project management
 CLAUDE.md

@@ -35,8 +35,6 @@ def _ctx_to_detector(ctx: SessionCaptureContext) -> SessionDetectorConfig:
         readout_mode_name=ctx.readout_mode_name,
         gain_setting=ctx.gain_setting,
         offset=ctx.offset_setting,
-        egain_e_per_adu=ctx.egain_e_per_adu,
-        ron_e=float(ctx.ron_e) if ctx.ron_e is not None else 3.5,
         cooler_setpoint_c=ctx.cooler_setpoint_c,
         pixel_size_um=ctx.pixel_size_um,
         plate_scale_arcsec=ctx.plate_scale_arcsec,

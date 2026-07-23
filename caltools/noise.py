@@ -19,7 +19,7 @@ from scipy.fft import rfft, rfftfreq
 
 from ._types import AnalysisResult, Frame, FrameCube, ROI, SensorConfig
 from .io import load_cube_chunked, load_frame
-from .stats import WelfordAccumulator, mad_sigma
+from .stats import WelfordVariance, mad_sigma
 
 
 def read_noise_map(
@@ -49,9 +49,9 @@ def read_noise_map(
         ts = np.std(cube, axis=0, dtype=np.float64)
         return ts, ts
 
-    # Frame-differencing with Welford accumulator
+    # Frame-differencing with Welford variance algorithm
     ny, nx = cube.shape[1], cube.shape[2]
-    acc = WelfordAccumulator((ny, nx))
+    acc = WelfordVariance((ny, nx))
 
     for k in range(n - 1):
         diff = cube[k + 1].astype(np.float64) - cube[k].astype(np.float64)
@@ -69,14 +69,14 @@ def read_noise_map(
 def read_noise_map_from_paths(
     paths: List[str],
     *,
-    chunk_rows: int = 50,
+    chunk_rows: int = 100,
     roi: Optional[ROI] = None,
 ) -> Tuple[Frame, Frame]:
     """Compute read-noise maps from FITS paths without a full-frame cube.
 
     This is the path-based equivalent of ``read_noise_map(...,
     method="frame_diff")``.  Only ``n_frames × chunk_rows × n_columns`` values
-    are resident at once, which keeps a full QHY268M bias stack practical.
+    are present at once, which keeps a full QHY268M bias stack practical.
     Returned maps remain in detector units (normally ADU).
     """
     if len(paths) < 2:
@@ -85,16 +85,13 @@ def read_noise_map_from_paths(
     first = load_frame(paths[0], roi=roi)
     rn_map = np.empty(first.shape, dtype=np.float32)
     temporal_std = np.empty(first.shape, dtype=np.float32)
+
     for row_sl, cube in load_cube_chunked(
-        paths, chunk_rows=chunk_rows, roi=roi, dtype=np.float32
-    ):
+        paths, chunk_rows=chunk_rows, roi=roi, dtype=np.float32):
+
         diffs = np.diff(cube.astype(np.float64), axis=0)
-        rn_map[row_sl, :] = (
-            np.std(diffs, axis=0, ddof=0) / np.sqrt(2.0)
-        ).astype(np.float32)
-        temporal_std[row_sl, :] = np.std(
-            cube, axis=0, dtype=np.float64, ddof=0
-        ).astype(np.float32)
+        rn_map[row_sl, :] = (np.std(diffs, axis=0) / np.sqrt(2.0)).astype(np.float32)
+        temporal_std[row_sl, :] = np.std(cube, axis=0, dtype=np.float64).astype(np.float32)
     return rn_map, temporal_std
 
 

@@ -6,6 +6,8 @@ from typing import Any, Dict, Optional, Tuple
 
 from poltools._types import FilterConfig, default_efw_filters
 
+from .block_log import JULIAN_ELEV_M, JULIAN_LAT_DEG, JULIAN_LON_DEG
+
 
 @dataclass
 class SessionCaptureContext:
@@ -15,8 +17,6 @@ class SessionCaptureContext:
     readout_mode_name: str = "Mode 0"
     gain_setting: int = 0
     offset_setting: int = 0
-    egain_e_per_adu: float = 1.0
-    ron_e: Optional[float] = 3.5
     cooler_setpoint_c: float = -15.0
     cooler_policy: str = "at_or_below"
     cooler_tolerance_c: float = 0.2
@@ -24,10 +24,25 @@ class SessionCaptureContext:
     cooler_timeout_s: float = 600.0
     pixel_size_um: float = 3.76
     plate_scale_arcsec: float = 0.224
+    # Optics — PlaneWave CDK20 standard f/6.8 (consistent with plate_scale_arcsec)
+    focal_length_mm: float = 3454.0
+    focal_ratio: float = 6.8
+    aperture_mm: float = 508.0
+    # Half-wave-plate PA uncertainty — Pyxis Gen3 open-loop step quantization
+    # (no encoder; commanded-vs-recorded error is step quantization ~0.012 deg).
+    hwp_uncert_deg: float = 0.012
     observer: Optional[str] = None
     observatory: str = "Julian, CA"
     telescope: str = "CDK20"
+    origin: str = "POLITE"
+    # Site geolocation (single source: obs_utils.block_log)
+    site_lat_deg: float = JULIAN_LAT_DEG
+    site_lon_deg: float = JULIAN_LON_DEG
+    site_elev_m: float = JULIAN_ELEV_M
     filters: Tuple[FilterConfig, ...] = field(default_factory=default_efw_filters)
+    # NB: conversion gain (e-/ADU) and read noise (e-) intentionally absent — they
+    # are per-night characterization results the analyst supplies at reduction time,
+    # never as-acquired capture state.
 
     def filter_wavelength_nm(self, filter_name: Optional[str]) -> Optional[float]:
         if filter_name is None:
@@ -54,10 +69,6 @@ def session_context_from_yaml(camera: Optional[Dict[str, Any]]) -> SessionCaptur
         updates["gain_setting"] = int(camera["gain"])
     if "offset" in camera:
         updates["offset_setting"] = int(camera["offset"])
-    if "egain_e_per_adu" in camera:
-        updates["egain_e_per_adu"] = float(camera["egain_e_per_adu"])
-    if "ron_e" in camera:
-        updates["ron_e"] = float(camera["ron_e"])
     if "cooler_setpoint_c" in camera:
         updates["cooler_setpoint_c"] = float(camera["cooler_setpoint_c"])
     if "cooler_policy" in camera:
@@ -83,5 +94,21 @@ def session_context_from_yaml(camera: Optional[Dict[str, Any]]) -> SessionCaptur
         updates["observatory"] = str(camera["observatory"])
     if "telescope" in camera:
         updates["telescope"] = str(camera["telescope"])
+    if "origin" in camera:
+        updates["origin"] = str(camera["origin"])
+    if "focal_length_mm" in camera:
+        updates["focal_length_mm"] = float(camera["focal_length_mm"])
+    if "focal_ratio" in camera:
+        updates["focal_ratio"] = float(camera["focal_ratio"])
+    if "aperture_mm" in camera:
+        updates["aperture_mm"] = float(camera["aperture_mm"])
+    if "hwp_uncert_deg" in camera:
+        updates["hwp_uncert_deg"] = float(camera["hwp_uncert_deg"])
+    if "site_lat_deg" in camera:
+        updates["site_lat_deg"] = float(camera["site_lat_deg"])
+    if "site_lon_deg" in camera:
+        updates["site_lon_deg"] = float(camera["site_lon_deg"])
+    if "site_elev_m" in camera:
+        updates["site_elev_m"] = float(camera["site_elev_m"])
 
     return SessionCaptureContext(**{**ctx.__dict__, **updates})

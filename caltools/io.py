@@ -150,24 +150,18 @@ def sensor_config_from_header(
 ) -> SensorConfig:
     """Build a ``SensorConfig`` from FITS header keywords.
 
-    Prefers ``EGAIN`` when present; otherwise requires an explicit ``gain=``.
+    Conversion gain is a per-night characterization value, not header state: an
+    explicit ``gain=`` wins; a legacy ``EGAIN`` card is used only as a fallback;
+    otherwise gain is left unset (``None``) for the analyst to supply at reduction.
     """
-    import warnings
-
     hdr = fits.getheader(path)
 
-    if "EGAIN" in hdr:
-        gain_val = float(hdr["EGAIN"])
-    elif gain is not None:
+    if gain is not None:
         gain_val = float(gain)
-        warnings.warn(
-            f"{path}: FITS header missing EGAIN; using supplied gain={gain_val} e-/ADU",
-            stacklevel=2,
-        )
+    elif "EGAIN" in hdr:  # legacy pre-2026-07 headers; advisory only
+        gain_val = float(hdr["EGAIN"])
     else:
-        raise KeyError(
-            f"{path}: FITS header missing EGAIN; pass gain= explicitly."
-        )
+        gain_val = None
 
     if "XPIXSZ" in hdr:
         pix = float(hdr["XPIXSZ"])
@@ -178,7 +172,12 @@ def sensor_config_from_header(
             "FITS header is missing XPIXSZ; pass pixel_size_um explicitly."
         )
 
-    temp = float(hdr["CCD-TEMP"]) if "CCD-TEMP" in hdr else float("nan")
+    if "DET-TEMP" in hdr:
+        temp = float(hdr["DET-TEMP"])
+    elif "CCD-TEMP" in hdr:  # legacy spelling on pre-2026-07 data
+        temp = float(hdr["CCD-TEMP"])
+    else:
+        temp = float("nan")
     if "INSTRUME" in hdr:
         detector_name = str(hdr["INSTRUME"])
     elif sensor_name is not None:

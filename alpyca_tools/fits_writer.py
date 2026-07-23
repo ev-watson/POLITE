@@ -18,13 +18,14 @@ class DetectorCards:
     """Detector readout provenance (§5.1.1 of first-light implementation plan)."""
 
     gain_setting: Optional[int] = None          # GAIN — Alpaca slider index
-    egain_e_per_adu: Optional[float] = None     # EGAIN — measured e-/ADU
     readout_mode: Optional[int] = None          # READMODE
     readout_mode_name: Optional[str] = None     # RMODE
     offset_setting: Optional[int] = None        # OFFSET
     cooler_setpoint_c: Optional[float] = None    # SET-TEMP
     pixel_size_um: Optional[float] = None       # XPIXSZ / YPIXSZ
-    ron_e: Optional[float] = None               # RON (optional)
+    # NB: conversion gain (e-/ADU) and read noise (e-) are intentionally NOT
+    # carried here or written to the header. They are per-night characterization
+    # results, not as-acquired state; the analyst supplies them at reduction time.
 
 
 @dataclass
@@ -50,6 +51,7 @@ class PolarimetryCards:
     savart_material: Optional[str] = "alpha-BBO"      # SAVMAT
     savart_thickness_mm: Optional[float] = 18.0       # SAVTHK
     eff_wavelength_nm: Optional[float] = None          # WAVELEN
+    hwp_uncert_deg: Optional[float] = None             # WPUNCERT (open-loop step quant.)
 
 
 @dataclass
@@ -73,6 +75,20 @@ class FitsHeaderConfig:
     dec: Optional[str] = None
     ha: Optional[str] = None
     equinox: Optional[float] = 2000.0
+    radesys: Optional[str] = None               # RADESYS (e.g. 'FK5')
+    ra_deg: Optional[float] = None              # CRVAL1 — field-center RA [deg]
+    dec_deg: Optional[float] = None             # CRVAL2 — field-center Dec [deg]
+    alt_deg: Optional[float] = None             # OBJCTALT
+    az_deg: Optional[float] = None              # OBJCTAZ
+    lst: Optional[str] = None                   # LST (sexagesimal)
+    site_lat_deg: Optional[float] = None        # SITELAT [+N]
+    site_lon_deg: Optional[float] = None        # SITELONG [+E]
+    site_elev_m: Optional[float] = None         # SITEELEV [m]
+    focal_len_mm: Optional[float] = None        # FOCALLEN
+    focal_ratio: Optional[float] = None         # FOCRATIO
+    aperture_mm: Optional[float] = None         # APTDIA
+    pixscale: Optional[float] = None            # PIXSCALE [arcsec/pixel]
+    origin: Optional[str] = None                # ORIGIN
     polarimetry: Optional[PolarimetryCards] = None
     detector: Optional[DetectorCards] = None
     wcs_cards: Dict[str, Any] = field(default_factory=dict)
@@ -89,6 +105,43 @@ def _set_card(hdr: fits.Header, key: str, value: Any, comment: Optional[str] = N
         hdr[key] = value
     else:
         hdr[key] = (value, comment)
+
+
+def _stamp_time_cards(hdr: fits.Header, date_obs: Any, exposure_s: Any) -> None:
+    """Add MJD-OBS, DATE-END, DATE-AVG, MJD-AVG derived from the start time.
+
+    Defensive: a malformed DATE-OBS or exposure simply skips the derived cards
+    rather than aborting the write.
+    """
+    try:
+        from astropy.time import Time, TimeDelta
+
+        t0 = Time(str(date_obs), format="isot", scale="utc")
+        dur = float(exposure_s)
+        t_mid = t0 + TimeDelta(dur / 2.0, format="sec")
+        t_end = t0 + TimeDelta(dur, format="sec")
+        _set_card(hdr, "MJD-OBS", float(t0.mjd), "MJD at exposure start (UTC)")
+        _set_card(hdr, "DATE-AVG", t_mid.isot, "UTC at exposure midpoint")
+        _set_card(hdr, "MJD-AVG", float(t_mid.mjd), "MJD at exposure midpoint (UTC)")
+        _set_card(hdr, "DATE-END", t_end.isot, "UTC at exposure end")
+    except Exception:
+        pass
+
+
+def _stamp_obsgeo(hdr: fits.Header, lat_deg: Any, lon_deg: Any, elev_m: Any) -> None:
+    """Add geocentric OBSGEO-X/Y/Z [m] from geodetic site coordinates."""
+    if lat_deg is None or lon_deg is None or elev_m is None:
+        return
+    try:
+        from obs_utils.obs_math import obsgeo_xyz
+
+        xyz = obsgeo_xyz(lat_deg, lon_deg, elev_m)
+        if xyz is not None:
+            _set_card(hdr, "OBSGEO-X", xyz[0], "Geocentric site X [m]")
+            _set_card(hdr, "OBSGEO-Y", xyz[1], "Geocentric site Y [m]")
+            _set_card(hdr, "OBSGEO-Z", xyz[2], "Geocentric site Z [m]")
+    except Exception:
+        pass
 
 
 def build_header(
@@ -120,6 +173,7 @@ def build_header(
     _set_card(hdr, "EXPOSURE", float(exposure_s), "Exposure time [s]")
     _set_card(hdr, "DATE-OBS", str(date_obs), "Exposure start time")
     _set_card(hdr, "TIMESYS", "UTC", "Time system")
+    _stamp_time_cards(hdr, date_obs, exposure_s)
     if cfg.timing is not None:
         from obs_utils.timing import stamp_timing_cards
 
@@ -135,6 +189,7 @@ def build_header(
     _set_card(hdr, "OBSERVER", cfg.observer, "Observer")
     _set_card(hdr, "TELESCOP", cfg.telescope, "Telescope")
     _set_card(hdr, "OBSERVAT", cfg.observatory, "Observatory/site")
+    _set_card(hdr, "ORIGIN", cfg.origin, "Institution/pipeline that wrote this file")
 
     instrume = cfg.instrument
     if instrume is None and camera is not None:
@@ -157,7 +212,6 @@ def build_header(
                 off = cfg.detector.offset_setting
             if isinstance(off, (int, np.integer)):
                 _set_card(hdr, "OFFSET", int(off), "Camera offset setting")
-                _set_card(hdr, "PEDESTAL", int(off), "Bias pedestal (if applicable)")
             else:
                 _set_card(hdr, "OFFSET", off, "Camera offset setting")
         except Exception:
@@ -165,20 +219,18 @@ def build_header(
 
     if camera is not None:
         try:
-            _set_card(hdr, "CCD-TEMP", float(camera.CCDTemperature), "Detector temperature [C]")
+            _set_card(hdr, "DET-TEMP", float(camera.CCDTemperature), "Detector temperature [C]")
         except Exception:
             pass
 
     det = cfg.detector
     if det is not None:
-        _set_card(hdr, "EGAIN", det.egain_e_per_adu, "Conversion gain [e-/ADU]")
         _set_card(hdr, "READMODE", det.readout_mode, "Readout mode index")
         _set_card(hdr, "RMODE", det.readout_mode_name, "Readout mode name")
         _set_card(hdr, "SET-TEMP", det.cooler_setpoint_c, "Cooler setpoint [C]")
         if det.pixel_size_um is not None:
             _set_card(hdr, "XPIXSZ", det.pixel_size_um, "Pixel size X [um]")
             _set_card(hdr, "YPIXSZ", det.pixel_size_um, "Pixel size Y [um]")
-        _set_card(hdr, "RON", det.ron_e, "Read noise [e-]")
 
     # Camera properties are authoritative when no explicit detector card was
     # supplied. Never substitute a model-specific pixel-size or gain default.
@@ -207,6 +259,7 @@ def build_header(
         _set_card(hdr, "SAVMAT", pol.savart_material, "Savart-plate material")
         _set_card(hdr, "SAVTHK", pol.savart_thickness_mm, "Savart-plate thickness [mm]")
         _set_card(hdr, "WAVELEN", pol.eff_wavelength_nm, "Filter effective wavelength [nm]")
+        _set_card(hdr, "WPUNCERT", pol.hwp_uncert_deg, "HWP angle uncertainty [deg]")
 
     _set_card(hdr, "AIRMASS", cfg.airmass, "Airmass at start")
     _set_card(hdr, "RA", cfg.ra, "Right Ascension (sexagesimal)")
@@ -214,6 +267,27 @@ def build_header(
     _set_card(hdr, "HA", cfg.ha, "Hour angle (sexagesimal)")
     if cfg.equinox is not None:
         _set_card(hdr, "EQUINOX", float(cfg.equinox), "Equinox of celestial coordinates")
+    _set_card(hdr, "RADESYS", cfg.radesys, "Celestial reference frame")
+
+    # Numeric field-center seed for downstream plate-solving. Deliberately no
+    # CTYPE/CD matrix: the dual-beam WCS solution is derived in reduction.
+    _set_card(hdr, "CRVAL1", cfg.ra_deg, "Field-center RA seed [deg] (no CTYPE/CD)")
+    _set_card(hdr, "CRVAL2", cfg.dec_deg, "Field-center Dec seed [deg] (no CTYPE/CD)")
+    _set_card(hdr, "OBJCTALT", cfg.alt_deg, "Telescope altitude [deg]")
+    _set_card(hdr, "OBJCTAZ", cfg.az_deg, "Telescope azimuth [deg]")
+    _set_card(hdr, "LST", cfg.lst, "Local mean sidereal time (sexagesimal)")
+
+    # Site geolocation
+    _set_card(hdr, "SITELAT", cfg.site_lat_deg, "Site latitude [deg, +N]")
+    _set_card(hdr, "SITELONG", cfg.site_lon_deg, "Site longitude [deg, +E]")
+    _set_card(hdr, "SITEELEV", cfg.site_elev_m, "Site elevation [m]")
+    _stamp_obsgeo(hdr, cfg.site_lat_deg, cfg.site_lon_deg, cfg.site_elev_m)
+
+    # Optics
+    _set_card(hdr, "FOCALLEN", cfg.focal_len_mm, "Focal length [mm]")
+    _set_card(hdr, "FOCRATIO", cfg.focal_ratio, "Focal ratio (f/#)")
+    _set_card(hdr, "APTDIA", cfg.aperture_mm, "Aperture diameter [mm]")
+    _set_card(hdr, "PIXSCALE", cfg.pixscale, "Plate scale [arcsec/pixel]")
 
     for k, v in (cfg.wcs_cards or {}).items():
         _set_card(hdr, k, v)

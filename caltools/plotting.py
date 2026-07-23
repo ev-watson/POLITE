@@ -60,6 +60,24 @@ def image_with_colorbar(
     return im
 
 
+def quick_view(file_path: str) -> None:
+    """Quickly view a FITS file with matplotlib.
+
+    Parameters
+    ----------
+    file_path : str
+        Path to FITS file.
+    """
+    from astropy.io import fits
+
+    data = fits.getdata(file_path, memmap=False)
+    fig, ax = plt.subplots()
+    image_with_colorbar(ax, data, label="ADU")
+    ax.set_title(file_path)
+    plt.show()
+    return None
+
+
 def ptc_plot(
     ax: plt.Axes,
     ptc_result: AnalysisResult,
@@ -76,8 +94,7 @@ def ptc_plot(
     signal = meta["signal"]
     variance = meta["variance"]
     labels = meta["labels"]
-    fit_free = meta["fit_free"]
-    fit_fixed = meta["fit_fixed"]
+    fit_free = meta["fit"]
 
     # Color each group
     unique_labels = list(dict.fromkeys(labels))
@@ -88,33 +105,68 @@ def ptc_plot(
         mask = np.array([l == lb for l in labels])
         ax.scatter(
             signal[mask], variance[mask],
-            s=8, alpha=0.4, color=label_color[lb], label=lb,
+            s=55, color=label_color[lb], label=lb,
         )
 
-    s_plot = np.linspace(0, signal.max() * 1.05, 500)
+    s_plot = np.linspace(0, signal.max() * 1.05, 300)
+    fit_line = fit_free["slope"] * s_plot + fit_free["intercept"]
+
+    fit = fit_free["slope"] * signal + fit_free["intercept"]
+    r_squared = 1.0 - np.sum((variance - fit)**2) / \
+    np.sum((variance - np.mean(variance))**2)
 
     ax.plot(
-        s_plot, fit_free["slope"] * s_plot + fit_free["intercept"],
-        "k-", lw=2,
-        label=f"Free fit G={fit_free['gain']:.3f} e/ADU",
-    )
-    ax.plot(
-        s_plot, fit_fixed["slope"] * s_plot + fit_fixed["intercept"],
-        "r--", lw=1.5,
-        label=f"Fixed fit G={fit_fixed['gain']:.3f} e/ADU",
-    )
-    ax.axhline(
-        fit_fixed["intercept"], ls=":", color="gray", lw=1,
-        label=f"RON² = {fit_fixed['intercept']:.2f} ADU²",
+        s_plot, fit_line,
+        "k-",
+        label=f"gain = {fit_free['gain']:.3f} e-/ADU; R² = {r_squared:.5f}",
     )
 
-    ax.set_xlabel(r"Mean bias-subtracted signal $\bar{S}$ (ADU)")
-    ax.set_ylabel(r"$\mathrm{Var}(F_1-F_2)/2$ (ADU²)")
-    ax.legend(fontsize=8, loc="upper left")
+    ax.set(
+    xlabel="Mean bias-subtracted signal (ADU)",
+    ylabel="Pair-difference variance (ADU²)",
+    title="Mean variance versus mean — cover PTC only",
+    )
+    ax.grid()
+    ax.legend()
+    plt.tight_layout()
+    ax.legend()
 
     if log_scale:
         ax.set_xscale("log")
         ax.set_yscale("log")
+
+
+def momsdom_plot(
+    ax: plt.Axes,
+    momsdom_result: AnalysisResult,
+    log_scale: bool = False,
+) -> None:
+    """Plot mean of means and standard deviation of the means versus frame number.
+
+    Expects ``momsdom_result.metadata`` to contain:
+        ``frame_numbers``, ``mean``, ``std``.
+    """
+    md = momsdom_result.metadata
+    exposures = md["exposures_s"]
+    moms = md["moms_adu"]
+    sdoms = md["sdoms_adu"]
+    mom_rates = md["mom_rates_adu_s"]
+    sdom_rates = md["sdom_rates_adu_s"]
+
+    ax.errorbar(exposures, moms, yerr=sdoms, fmt="o-", capsize=4, label="MOM ± SDOM")
+    ax.set(xlabel="Exposure time (s)", ylabel="Bias-subtracted signal (ADU)", title="Flat MOMs and SDOMs")
+    ax.grid()
+    ax.legend()
+
+    ax.errorbar(exposures, mom_rates, yerr=sdom_rates, fmt="o-", capsize=4, label="MOM/exptime ± SDOM")
+    ax.set(xlabel="Exposure time (s)", ylabel="Signal rate (ADU/s)", title="Twilight-rate check")
+    ax.grid()
+    ax.legend()
+    plt.tight_layout()
+
+    if log_scale:
+            ax.set_xscale("log")
+            ax.set_yscale("log")
 
 
 def histogram_gaussian_overlay(
@@ -205,6 +257,7 @@ def noise_map_with_histogram(
     ax_hist.hist(flat, bins=200, color="steelblue", alpha=0.7)
     ax_hist.axvline(med, ls="--", color="red", lw=1.5, label=f"median = {med:.2f}")
     ax_hist.set_xlabel(f"{label} ({unit})")
+    ax_hist.set_xlim(auto=True)
     ax_hist.set_ylabel("Pixel count")
     ax_hist.set_title(f"{label} distribution")
     ax_hist.legend()

@@ -8,24 +8,27 @@ and subsampled sigma-vs-mean preparation for PTC plots.
 from __future__ import annotations
 
 import warnings
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, List
 
 import numpy as np
+from numpy.typing import ArrayLike
 from scipy import stats as sp_stats
 
-from ._types import Frame
+from ._types import Frame, AnalysisResult, ROI
 
 
-class WelfordAccumulator:
+class WelfordVariance:
     """Online mean and variance via the Welford algorithm.
+    https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
 
+m
     Processes one frame at a time without storing the full cube.
     """
 
     def __init__(self, shape: Tuple[int, ...]) -> None:
         self.n = 0
         self._mean = np.zeros(shape, dtype=np.float64)
-        self._m2 = np.zeros(shape, dtype=np.float64)
+        self._M2 = np.zeros(shape, dtype=np.float64)
 
     def update(self, frame: np.ndarray) -> None:
         """Incorporate one frame into the running statistics."""
@@ -33,7 +36,7 @@ class WelfordAccumulator:
         delta = frame.astype(np.float64) - self._mean
         self._mean += delta / self.n
         delta2 = frame.astype(np.float64) - self._mean
-        self._m2 += delta * delta2
+        self._M2 += delta * delta2
 
     @property
     def mean(self) -> np.ndarray:
@@ -45,7 +48,7 @@ class WelfordAccumulator:
         """Population variance (ddof=0)."""
         if self.n < 2:
             return np.zeros_like(self._mean)
-        return self._m2 / self.n
+        return self._M2 / self.n
 
     @property
     def std(self) -> np.ndarray:
@@ -57,7 +60,7 @@ class WelfordAccumulator:
         """Sample variance (ddof=1)."""
         if self.n < 2:
             return np.zeros_like(self._mean)
-        return self._m2 / (self.n - 1)
+        return self._M2 / (self.n - 1)
 
 
 def mad_sigma(data: np.ndarray) -> float:

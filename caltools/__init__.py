@@ -23,7 +23,7 @@ from .io import (
 from .stacking import master_bias, master_dark, master_flat
 
 from .stats import (
-    WelfordAccumulator,
+    WelfordVariance,
     gaussianity_tests,
     mad_sigma,
     outlier_mask,
@@ -47,9 +47,10 @@ from .dark import (
     warm_pixel_map,
 )
 
-from .gain import (
+from .flat import (
     full_well_capacity,
     noise_decomposition,
+    momsdom,
     photon_transfer_curve,
     photon_transfer_curve_with_ron,
 )
@@ -61,7 +62,9 @@ from .prnu import prnu_map
 from .plotting import (
     histogram_gaussian_overlay,
     image_with_colorbar,
+    quick_view,
     noise_map_with_histogram,
+    momsdom_plot,
     ptc_plot,
     summary_table,
 )
@@ -81,7 +84,7 @@ __all__ = [
     "master_bias",
     "master_dark",
     "master_flat",
-    "WelfordAccumulator",
+    "WelfordVariance",
     "gaussianity_tests",
     "mad_sigma",
     "outlier_mask",
@@ -97,6 +100,7 @@ __all__ = [
     "dark_current_vs_temperature",
     "dark_spatial_structure",
     "warm_pixel_map",
+    "momsdom",
     "photon_transfer_curve",
     "photon_transfer_curve_with_ron",
     "full_well_capacity",
@@ -105,6 +109,8 @@ __all__ = [
     "linearity_error",
     "prnu_map",
     "image_with_colorbar",
+    "quick_view",
+    "momsdom_plot",
     "ptc_plot",
     "histogram_gaussian_overlay",
     "noise_map_with_histogram",

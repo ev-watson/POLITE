@@ -12,7 +12,14 @@ from typing import Any, Dict, List, Literal, Optional, Union
 from alpyca_tools.camera_ops import ExposureSettings, configure_camera
 from alpyca_tools.fits_writer import DetectorCards, FitsHeaderConfig, PolarimetryCards
 
-from .block_log import BlockLogger, moon_separation_deg, pwi4_snapshot
+from .block_log import (
+    JULIAN_ELEV_M,
+    JULIAN_LAT_DEG,
+    JULIAN_LON_DEG,
+    BlockLogger,
+    moon_separation_deg,
+    pwi4_snapshot,
+)
 from .horizons import cache_ephemeris, fetch_ephemeris, resolve_target_id
 from .imaging import CaptureRequest, capture_fits_file, select_filter, select_hwp_angle
 from .mount import slew_altaz, slew_radec_j2000, wait_for_slew
@@ -142,13 +149,11 @@ def _detector_cards(ctx: Optional[SessionCaptureContext], plan: FramePlan) -> Op
     mode = plan.readout_mode if plan.readout_mode is not None else ctx.readout_mode
     return DetectorCards(
         gain_setting=gain,
-        egain_e_per_adu=ctx.egain_e_per_adu,
         readout_mode=mode,
         readout_mode_name=ctx.readout_mode_name,
         offset_setting=offset,
         cooler_setpoint_c=ctx.cooler_setpoint_c,
         pixel_size_um=ctx.pixel_size_um,
-        ron_e=ctx.ron_e,
     )
 
 
@@ -228,42 +233,61 @@ def _resolve_filter_name(
     return str(filter_value)
 
 
-def _format_hours(hours: Optional[float]) -> Optional[str]:
-    if hours is None:
-        return None
-    return f"{hours:.6f}"
+@dataclass
+class _PointingFields:
+    """Mount pointing snapshot in FITS-ready forms (sexagesimal + numeric)."""
+
+    ra_sex: Optional[str] = None
+    dec_sex: Optional[str] = None
+    ha_sex: Optional[str] = None
+    lst_sex: Optional[str] = None
+    ra_deg: Optional[float] = None
+    dec_deg: Optional[float] = None
+    alt_deg: Optional[float] = None
+    az_deg: Optional[float] = None
+    airmass: Optional[float] = None
 
 
-def _format_degs(deg: Optional[float]) -> Optional[str]:
-    if deg is None:
-        return None
-    return f"{deg:.6f}"
+def _auto_pointing_fields(pwi4) -> _PointingFields:
+    """Snapshot mount pointing into sexagesimal + numeric FITS pointing fields."""
+    from .obs_math import airmass_kasten_young, deg_to_dms, hours_to_hms
 
-
-def _auto_pointing_fields(pwi4) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    fields = _PointingFields()
     try:
         status = pwi4.status()
     except Exception:
-        return None, None, None
+        return fields
 
-    ra = _format_hours(status.mount.ra_j2000_hours)
-    dec = _format_degs(status.mount.dec_j2000_degs)
-    ha = None
+    mount = status.mount
+    ra_h = getattr(mount, "ra_j2000_hours", None)
+    dec_d = getattr(mount, "dec_j2000_degs", None)
+    if ra_h is not None:
+        fields.ra_deg = float(ra_h) * 15.0
+        fields.ra_sex = hours_to_hms(ra_h, wrap=True)
+    if dec_d is not None:
+        fields.dec_deg = float(dec_d)
+        fields.dec_sex = deg_to_dms(dec_d)
+
+    fields.alt_deg = getattr(mount, "altitude_degs", None)
+    fields.az_deg = getattr(mount, "azimuth_degs", None)
+    fields.airmass = airmass_kasten_young(fields.alt_deg)
 
     try:
         lmst = status.site.lmst_hours
-        ra_app = status.mount.ra_apparent_hours
-        if lmst is not None and ra_app is not None:
-            ha_val = lmst - ra_app
-            while ha_val < -12.0:
-                ha_val += 24.0
-            while ha_val >= 12.0:
-                ha_val -= 24.0
-            ha = _format_hours(ha_val)
+        if lmst is not None:
+            fields.lst_sex = hours_to_hms(lmst, wrap=True)
+            ra_app = getattr(mount, "ra_apparent_hours", None)
+            if ra_app is not None:
+                ha_val = lmst - ra_app
+                while ha_val < -12.0:
+                    ha_val += 24.0
+                while ha_val >= 12.0:
+                    ha_val -= 24.0
+                fields.ha_sex = hours_to_hms(ha_val, signed=True, wrap=False)
     except Exception:
         pass
 
-    return ra, dec, ha
+    return fields
 
 
 def _build_header_config(
@@ -293,16 +317,20 @@ def _build_header_config(
     telescope = config.telescope or (ctx.telescope if ctx else None)
     observatory = config.observatory or (ctx.observatory if ctx else None)
 
-    ra = None
-    dec = None
-    ha = None
+    pf = _PointingFields()
     if config.auto_metadata and pwi4 is not None:
-        ra, dec, ha = _auto_pointing_fields(pwi4)
+        pf = _auto_pointing_fields(pwi4)
 
-    if ra is None and target and target.ra_hours is not None:
-        ra = _format_hours(target.ra_hours)
-    if dec is None and target and target.dec_deg is not None:
-        dec = _format_degs(target.dec_deg)
+    if pf.ra_sex is None and target and target.ra_hours is not None:
+        from .obs_math import hours_to_hms
+
+        pf.ra_deg = float(target.ra_hours) * 15.0
+        pf.ra_sex = hours_to_hms(target.ra_hours, wrap=True)
+    if pf.dec_sex is None and target and target.dec_deg is not None:
+        from .obs_math import deg_to_dms
+
+        pf.dec_deg = float(target.dec_deg)
+        pf.dec_sex = deg_to_dms(target.dec_deg)
 
     polarimetry = None
     hwp = achieved_hwp_deg if achieved_hwp_deg is not None else plan.hwp_angle_deg
@@ -315,6 +343,7 @@ def _build_header_config(
             pol_seq_id=plan.pol_seq_id,
             pol_seq_index=plan.pol_seq_index,
             eff_wavelength_nm=wavlen,
+            hwp_uncert_deg=ctx.hwp_uncert_deg if ctx else None,
         )
 
     return FitsHeaderConfig(
@@ -324,10 +353,25 @@ def _build_header_config(
         telescope=telescope,
         observatory=observatory,
         instrument=instrument,
+        origin=ctx.origin if ctx else None,
         filter_name=filter_name,
-        ra=ra,
-        dec=dec,
-        ha=ha,
+        ra=pf.ra_sex,
+        dec=pf.dec_sex,
+        ha=pf.ha_sex,
+        ra_deg=pf.ra_deg,
+        dec_deg=pf.dec_deg,
+        alt_deg=pf.alt_deg,
+        az_deg=pf.az_deg,
+        airmass=pf.airmass,
+        lst=pf.lst_sex,
+        radesys="FK5" if pf.ra_sex is not None else None,
+        site_lat_deg=ctx.site_lat_deg if ctx else None,
+        site_lon_deg=ctx.site_lon_deg if ctx else None,
+        site_elev_m=ctx.site_elev_m if ctx else None,
+        focal_len_mm=ctx.focal_length_mm if ctx else None,
+        focal_ratio=ctx.focal_ratio if ctx else None,
+        aperture_mm=ctx.aperture_mm if ctx else None,
+        pixscale=ctx.plate_scale_arcsec if ctx else None,
         polarimetry=polarimetry,
         detector=_detector_cards(ctx, plan),
         timing=ntp_status.to_provenance() if ntp_status is not None else None,
@@ -655,7 +699,8 @@ def _maybe_update_asteroid_ephemeris(
     try:
         from astropy.time import Time
         row = fetch_ephemeris(
-            hid, Time.now(), lon_deg=-116.6451, lat_deg=33.0701, elev_m=1294.0,
+            hid, Time.now(),
+            lon_deg=JULIAN_LON_DEG, lat_deg=JULIAN_LAT_DEG, elev_m=JULIAN_ELEV_M,
             target_name=target.name,
         )
         cache_ephemeris(cache_path, row)

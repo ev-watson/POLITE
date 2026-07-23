@@ -83,10 +83,8 @@ def write_pol_fits(
             gain_setting=int(cfg.gain_setting),
             readout_mode=int("".join(ch for ch in cfg.readout_mode if ch.isdigit()) or 0),
             readout_mode_name=str(cfg.readout_mode),
-            egain_e_per_adu=float(cfg.sensor.gain_e_per_adu),
             cooler_setpoint_c=float(cfg.sensor.temperature_c),
             pixel_size_um=float(cfg.sensor.pixel_size_um),
-            ron_e=float(cfg.read_noise_e),
         ),
         polarimetry=PolarimetryCards(
             hwp_angle_deg=float(hwp_deg),

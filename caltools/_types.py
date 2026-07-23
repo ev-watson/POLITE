@@ -41,17 +41,10 @@ class SensorConfig:
     nx: int
     ny: int
     pixel_size_um: float
-    gain_e_per_adu: float
+    gain_e_per_adu: Optional[float]  # per-night characterization value; may be None
     temperature_c: float
     bitdepth: int = 16
     sensor_name: str = "QHY268M"
-
-    def central_roi(self, height: int = 2000, width: int = 3000) -> ROI:
-        """Return a centred ROI as ``(row_slice, col_slice)``."""
-        cy, cx = self.ny // 2, self.nx // 2
-        ry = slice(cy - height // 2, cy + height // 2)
-        rx = slice(cx - width // 2, cx + width // 2)
-        return ry, rx
 
     def with_gain(self, gain_e_per_adu: float) -> SensorConfig:
         """Return a new config with updated gain (frozen — no mutation)."""
