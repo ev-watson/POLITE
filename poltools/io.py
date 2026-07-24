@@ -34,12 +34,12 @@ POL_KEYWORDS = {
     "POLSEQN": "Index within polarimetry sequence",
     "POLEFF": "Polarization (modulation) efficiency",
     "PIXSCALE": "Plate scale [arcsec/pixel]",
-    "EGAIN": "Conversion gain [e-/ADU]",
     "READMODE": "Readout mode index",
     "SET-TEMP": "Cooler setpoint [C]",
     "SAVMAT": "Savart-plate material",
     "SAVTHK": "Savart-plate thickness [mm]",
     "WAVELEN": "Filter effective wavelength [nm]",
+    "WPUNCERT": "HWP angle uncertainty [deg]",
 }
 
 SAVART_MATERIAL = "alpha-BBO"

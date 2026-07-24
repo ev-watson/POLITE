@@ -41,6 +41,7 @@ from .noise import (
 )
 
 from .dark import (
+    arrhenius,
     dark_current_vs_exposure,
     dark_current_vs_temperature,
     dark_spatial_structure,
@@ -64,8 +65,10 @@ from .plotting import (
     image_with_colorbar,
     quick_view,
     noise_map_with_histogram,
-    momsdom_plot,
+    momsdom_twilight_plot,
     ptc_plot,
+    dark_current_vs_exposure_plot,
+    dark_current_vs_temperature_plot,
     summary_table,
 )
 
@@ -96,6 +99,7 @@ __all__ = [
     "dsnu",
     "fpn",
     "detect_rtn_pixels",
+    "arrhenius",
     "dark_current_vs_exposure",
     "dark_current_vs_temperature",
     "dark_spatial_structure",
@@ -110,8 +114,10 @@ __all__ = [
     "prnu_map",
     "image_with_colorbar",
     "quick_view",
-    "momsdom_plot",
+    "momsdom_twilight_plot",
     "ptc_plot",
+    "dark_current_vs_exposure_plot",
+    "dark_current_vs_temperature_plot",
     "histogram_gaussian_overlay",
     "noise_map_with_histogram",
     "summary_table",

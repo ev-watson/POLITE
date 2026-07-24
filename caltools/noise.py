@@ -15,7 +15,7 @@ from __future__ import annotations
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
-from scipy.fft import rfft, rfftfreq
+from scipy.fft import rfft, rfftfreq # type: ignore
 
 from ._types import AnalysisResult, Frame, FrameCube, ROI, SensorConfig
 from .io import load_cube_chunked, load_frame
@@ -69,7 +69,7 @@ def read_noise_map(
 def read_noise_map_from_paths(
     paths: List[str],
     *,
-    chunk_rows: int = 100,
+    chunk_rows: int = 50,
     roi: Optional[ROI] = None,
 ) -> Tuple[Frame, Frame]:
     """Compute read-noise maps from FITS paths without a full-frame cube.
@@ -97,7 +97,7 @@ def read_noise_map_from_paths(
 
 def read_noise_spatial(
     rn_map: Frame,
-    config: SensorConfig,
+    gain: float,
 ) -> AnalysisResult:
     """Summarize read noise map statistics: histogram, hot pixel census.
 
@@ -105,8 +105,8 @@ def read_noise_spatial(
     ----------
     rn_map : Frame
         Per-pixel read noise in ADU.
-    config : SensorConfig
-        Sensor configuration (provides gain for electron conversion).
+    gain : float
+        Gain for electron conversion (e/ADU).
 
     Returns
     -------
@@ -114,7 +114,7 @@ def read_noise_spatial(
         ron_median_adu, ron_median_e, ron_rms_adu, ron_rms_e,
         hot_3sig, hot_5sig, hot_10sig (pixel counts).
     """
-    g = config.gain_e_per_adu
+    g = gain
     med = float(np.median(rn_map))
     rms = float(np.sqrt(np.mean(rn_map ** 2)))
     sig = mad_sigma(rn_map)
@@ -200,8 +200,7 @@ def row_column_noise(
 
 def dsnu(
     master_darks_by_exptime: Dict[float, Frame],
-    bias: Frame,
-    config: SensorConfig,
+    gain: float,
 ) -> AnalysisResult:
     """Measure how dark current varies across the detector.
 
@@ -218,7 +217,7 @@ def dsnu(
     config : SensorConfig
         Sensor configuration.
     """
-    g = config.gain_e_per_adu
+    g = gain
     scalars = {}
     maps = {}
 

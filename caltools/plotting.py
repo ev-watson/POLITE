@@ -8,11 +8,12 @@ from __future__ import annotations
 
 from typing import List, Tuple
 
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt # type: ignore
 import numpy as np
-from mpl_toolkits.axes_grid1 import make_axes_locatable
+from mpl_toolkits.axes_grid1 import make_axes_locatable  # type: ignore
 
 from ._types import AnalysisResult
+from .dark import arrhenius
 
 
 def image_with_colorbar(
@@ -68,7 +69,7 @@ def quick_view(file_path: str) -> None:
     file_path : str
         Path to FITS file.
     """
-    from astropy.io import fits
+    from astropy.io import fits # type: ignore
 
     data = fits.getdata(file_path, memmap=False)
     fig, ax = plt.subplots()
@@ -102,10 +103,10 @@ def ptc_plot(
     label_color = {lb: cmap(i % 10) for i, lb in enumerate(unique_labels)}
 
     for lb in unique_labels:
-        mask = np.array([l == lb for l in labels])
+        mask = np.array([label == lb for label in labels])
         ax.scatter(
             signal[mask], variance[mask],
-            s=55, color=label_color[lb], label=lb,
+            s=55, color=label_color[lb], label=f"{lb}s",
         )
 
     s_plot = np.linspace(0, signal.max() * 1.05, 300)
@@ -136,7 +137,7 @@ def ptc_plot(
         ax.set_yscale("log")
 
 
-def momsdom_plot(
+def momsdom_twilight_plot(
     ax: plt.Axes,
     momsdom_result: AnalysisResult,
     log_scale: bool = False,
@@ -153,20 +154,109 @@ def momsdom_plot(
     mom_rates = md["mom_rates_adu_s"]
     sdom_rates = md["sdom_rates_adu_s"]
 
-    ax.errorbar(exposures, moms, yerr=sdoms, fmt="o-", capsize=4, label="MOM ± SDOM")
-    ax.set(xlabel="Exposure time (s)", ylabel="Bias-subtracted signal (ADU)", title="Flat MOMs and SDOMs")
-    ax.grid()
-    ax.legend()
+    ax[0].errorbar(exposures, moms, yerr=sdoms, fmt="o-", capsize=4, label="MOM ± SDOM")
+    ax[0].set(xlabel="Exposure time (s)", ylabel="Bias-subtracted signal (ADU)", title="Flat MOMs and SDOMs")
+    ax[0].grid()
+    ax[0].legend()
 
-    ax.errorbar(exposures, mom_rates, yerr=sdom_rates, fmt="o-", capsize=4, label="MOM/exptime ± SDOM")
-    ax.set(xlabel="Exposure time (s)", ylabel="Signal rate (ADU/s)", title="Twilight-rate check")
-    ax.grid()
-    ax.legend()
+    ax[1].errorbar(exposures, mom_rates, yerr=sdom_rates, fmt="o-", capsize=4, label="MOM/exptime ± SDOM")
+    ax[1].set(xlabel="Exposure time (s)", ylabel="Signal rate (ADU/s)", title="Twilight-rate check")
+    ax[1].grid()
+    ax[1].legend()
     plt.tight_layout()
 
     if log_scale:
-            ax.set_xscale("log")
-            ax.set_yscale("log")
+            ax[0].set_xscale("log")
+            ax[0].set_yscale("log")
+            ax[1].set_xscale("log")
+            ax[1].set_yscale("log")
+
+
+def dark_current_vs_exposure_plot(
+    ax: plt.Axes,
+    dark_current_result: AnalysisResult,
+    log_scale: bool = False,
+) -> None:
+    """Plot dark current vs exposure time.
+
+    Expects ``dark_current_result.metadata`` to contain:
+        ``exptimes``, ``dark_rates``, ``mean_signals_adu``, ``std_signals_adu``.
+        All dark rates in e-/s
+    """
+    md = dark_current_result.metadata
+    exptimes = md["exptimes"]
+    mean_signals_e = md["mean_signals_e"]
+    std_signals_e = md["std_signals_e"]
+    dark_rate_e = md["dark_rate_e_per_s"]
+    dark_rate_e_err = md["dark_rate_e_err"]
+    offset_e = md["offset_e"]
+    r_squared = md["r_squared"]
+
+    fit_x = np.linspace(0, max(exptimes) * 1.05, 300)
+    fit_y = dark_rate_e * fit_x + offset_e
+
+    ax.errorbar(exptimes, mean_signals_e, yerr=std_signals_e, fmt="o", capsize=4, label="Dark current ± SDOM")
+    ax.plot(fit_x, fit_y, "k-", label=f"Fit: {dark_rate_e:.3G} ± {dark_rate_e_err:.3G} e-/s, R²={r_squared:.3G}")
+    
+    ax.set(
+        xlabel="Exposure time (s)",
+    )
+    ax.grid()
+    ax.legend()
+
+    if log_scale:
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+
+
+def dark_current_vs_temperature_plot(
+    ax: plt.Axes,
+    dark_current_result: AnalysisResult,
+    log_scale: bool = False,
+    arrhenius_fit: bool = True,
+) -> None:
+    """Plot one fitted dark-current rate per detector temperature.
+
+    Expects the result returned by ``dark_current_vs_temperature()`` with
+    metadata arrays ``temperatures_c``, ``dark_rates_e_per_s``, and
+    ``dark_rate_errors_e_per_s``.
+    """
+    md = dark_current_result.metadata
+    temperatures_c = md["temperatures_c"]
+    dark_rates_e_per_s = md["dark_rates_e_per_s"]
+    dark_rate_errors_e_per_s = md["dark_rate_errors_e_per_s"]
+
+    if arrhenius_fit:
+        ss = dark_current_result.scalar_summary
+        A = ss["arrhenius_A"]
+        Ea = ss["arrhenius_Ea_eV"]
+        A_err = ss["arrhenius_A_err"]
+        Ea_err = ss["arrhenius_Ea_err_eV"]
+
+    xfit = np.linspace(min(temperatures_c) - 2, max(temperatures_c) + 2, 300)
+    yfit = arrhenius(xfit, A, Ea)
+
+    ax.errorbar(
+        temperatures_c,
+        dark_rates_e_per_s,
+        yerr=dark_rate_errors_e_per_s,
+        fmt="o",
+        capsize=4,
+        label="Exposure-fit dark current ± 1σ",
+    )
+
+    ax.plot(xfit, yfit, "k-", label=f"Arrhenius fit: A={A:.3g}±{A_err:.3G}, Ea={Ea:.3G}±{Ea_err:.3G}")
+
+    ax.set(
+        xlabel="Temperature (°C)",
+        ylabel="Dark current (e-/pixel/s)",
+        title="Dark current vs temperature",
+    )
+    ax.grid()
+    ax.legend()
+
+    if log_scale:
+        ax.set_yscale("log")
 
 
 def histogram_gaussian_overlay(
@@ -197,7 +287,7 @@ def histogram_gaussian_overlay(
     label_data : str
         Legend label for the histogram.
     """
-    from scipy import stats as sp_stats
+    from scipy import stats as sp_stats # type: ignore
 
     flat = data.ravel()
     mu, sig = np.mean(flat), np.std(flat)

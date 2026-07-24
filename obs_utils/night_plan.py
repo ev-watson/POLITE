@@ -425,7 +425,7 @@ def describe(config: NightSessionConfig) -> str:
         lines.append("camera:")
         lines.append(f"  readout_mode={ctx.readout_mode} ({ctx.readout_mode_name})")
         lines.append(f"  gain={ctx.gain_setting}  offset={ctx.offset_setting}")
-        lines.append(f"  egain={ctx.egain_e_per_adu} e-/ADU  ron={ctx.ron_e} e-")
+        lines.append(f"  pixel={ctx.pixel_size_um}um  plate_scale={ctx.plate_scale_arcsec}\"/px")
         lines.append(f"  cooler_setpoint={ctx.cooler_setpoint_c} C")
         lines.append(f"  naming={config.naming}  base_data_dir={config.base_data_dir}")
         lines.append("")

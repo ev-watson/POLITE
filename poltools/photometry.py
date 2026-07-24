@@ -178,6 +178,19 @@ def measure_fluxes(image: np.ndarray, positions: Sequence[Tuple[float, float]],
     gain = cfg.sensor.gain_e_per_adu
     ron = cfg.read_noise_e
 
+    # Gain and read noise are per-night characterization values, not header state.
+    # They are not defaulted anywhere; reduction requires the analyst to supply them.
+    if gain is None:
+        raise ValueError(
+            "measure_fluxes: conversion gain (e-/ADU) is unknown. It is a per-night "
+            "characterization value — set cfg.sensor.gain_e_per_adu before photometry."
+        )
+    if ron is None and ron_map is None:
+        raise ValueError(
+            "measure_fluxes: read noise (e-) is unknown. Supply cfg.read_noise_e or a "
+            "ron_map before photometry — it is a per-night characterization value."
+        )
+
     work = (image if bad_pixel_mask is None
             else _repair_bad_pixels(image, bad_pixel_mask))
 

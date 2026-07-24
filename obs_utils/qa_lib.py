@@ -103,9 +103,13 @@ def run_bias_qa(
 
     for p in files:
         hdr = fits.getheader(p, ignore_missing_end=True)
-        egain_vals.append(float(hdr.get("EGAIN", hdr.get("GAIN", 1.0))))
+        # Conversion gain is a per-night characterization value and is no longer
+        # written to headers. At capture time we cannot know it, so default to
+        # unity: the read noise below is therefore reported in ADU (e- at unity
+        # gain). Never fall back to GAIN -- that is the slider index, not e-/ADU.
+        egain_vals.append(float(hdr.get("EGAIN", 1.0)))
 
-    egain = float(np.median(egain_vals))
+    egain = float(np.median(egain_vals)) if egain_vals else 1.0
 
     # Per-frame checks on sigma-clipped bias level and pinned-pixel fraction.
     # A few pinned pixels are normal on CMOS; only a large fraction is a fault.
