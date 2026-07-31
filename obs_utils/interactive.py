@@ -195,8 +195,12 @@ class ObservatorySession:
         if session.filter_wheel is None:
             raise RuntimeError("No filter wheel connected")
         landed = select_filter(session, position, poll_s=poll_s, timeout_s=timeout_s)
-        logger.info("Filter -> slot %d (%s)", landed, self._filter_name(landed))
-        return landed
+        # ``select_filter`` returns FilterWheelState so capture code can retain
+        # both the landed slot and readiness. The notebook API intentionally
+        # returns only its documented integer slot.
+        slot = int(getattr(landed, "fwpos", landed))
+        logger.info("Filter -> slot %d (%s)", slot, self._filter_name(slot))
+        return slot
 
     def _filter_name(self, slot: int) -> str:
         names = self._filter_names()

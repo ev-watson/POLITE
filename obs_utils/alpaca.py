@@ -162,13 +162,21 @@ def set_filter_position(
 ) -> FilterWheelState:
     if isinstance(position, str):
         names = list(filter_wheel.Names)
-        if position in names:
-            position = names.index(position)
-        elif names_override and position in names_override:
-            position = names_override.index(position)
-        else:
+        label = " ".join(position.replace("_", " ").split()).casefold()
+
+        def matching_slot(labels) -> Optional[int]:
+            for slot, candidate in enumerate(labels):
+                key = " ".join(str(candidate).replace("_", " ").split()).casefold()
+                if key == label:
+                    return slot
+            return None
+
+        position = matching_slot(names)
+        if position is None and names_override:
+            position = matching_slot(names_override)
+        if position is None:
             raise ValueError(
-                f"Filter '{position}' not in filter wheel names: {names or names_override}"
+                f"Filter '{label}' not in filter wheel names: {names or names_override}"
             )
 
     target = int(position)

@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from obs_utils import interactive, startup
+from obs_utils.timing import FilterWheelState
 from obs_utils.waits import DeviceTimeout
 
 
@@ -102,3 +103,11 @@ def test_center_on_pair_rejects_nominal_uncharacterized_geometry_before_exposure
     with pytest.raises(RuntimeError, match="not characterized"):
         session.center_on_pair(frame=np.zeros((20, 20)), pol_config=cfg)
 
+
+def test_interactive_filter_unwraps_state_to_its_documented_slot(monkeypatch):
+    imaging = NS(filter_wheel=object(), filter_names=["Clear", "Photometric V", "Dark"])
+    session = interactive.ObservatorySession(imaging=imaging)
+    monkeypatch.setattr(
+        interactive, "select_filter", lambda *_args, **_kwargs: FilterWheelState(1, True),
+    )
+    assert session.filter(1) == 1
