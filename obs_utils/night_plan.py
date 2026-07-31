@@ -15,7 +15,7 @@ Two files (see ``night_plans/``):
 Brick types (the ``type:`` field)::
 
     stack        filter, exp, n [, gain, offset, binx, biny]        -> 1 LIGHT stack
-    pol_seq      filter, angles|hwp, exp, n [, retardance=180, ...]  -> 1 LIGHT stack per HWP angle
+    pol_seq      filter, angles|hwp, exp, n [, pol_seq_id, ...]      -> 1 LIGHT stack per HWP angle
     filter_loop  filters:[...], exp, n [, gain, offset]             -> 1 LIGHT stack per filter
     cal          frame:DARK|BIAS|FLAT, exp, n [, filter]            -> 1 calibration stack
     cal_multi    frames:[{frame, exp, n}, ...]                       -> multiple cal stacks
@@ -44,7 +44,10 @@ from .startup import StartupConfig
 logger = logging.getLogger(__name__)
 
 # Fields on a stack/pol brick that map straight onto FramePlan capture params.
-_CAPTURE_KEYS = ("gain", "offset", "binx", "biny", "numx", "numy", "readout_mode")
+_CAPTURE_KEYS = (
+    "gain", "offset", "binx", "biny", "startx", "starty", "numx", "numy",
+    "readout_mode",
+)
 
 
 class NightPlanError(ValueError):
@@ -129,14 +132,13 @@ def _expand_brick(name: str, spec: Dict[str, Any]) -> List[FramePlan]:
     if btype == "pol_seq":
         angles = hwp_angles(spec.get("hwp", spec.get("angles")))
         _check_pol_sampling(angles)
-        retard = float(spec.get("retardance", 180.0))
         seq_id = spec.get("pol_seq_id", name)
         frames = []
         for i, a in enumerate(angles):
             frames.append(FramePlan(
                 frame_type="LIGHT", exposure_s=float(spec["exp"]), count=n,
                 filter=spec.get("filter"), hwp_angle_deg=float(a),
-                retardance_deg=retard, pol_seq_id=seq_id, pol_seq_index=i,
+                pol_seq_id=seq_id, pol_seq_index=i,
                 source_brick=name, **common,
             ))
         return frames
@@ -144,7 +146,6 @@ def _expand_brick(name: str, spec: Dict[str, Any]) -> List[FramePlan]:
     if btype == "pol_flat":
         angles = hwp_angles(spec.get("angles", 4))
         _check_pol_sampling(angles)
-        retard = float(spec.get("retardance", 180.0))
         seq_id = spec.get("pol_seq_id", name)
         obj = spec.get("object_name", "TwilightFlat")
         frame = str(spec.get("imagetyp", "FLAT")).upper()
@@ -153,7 +154,7 @@ def _expand_brick(name: str, spec: Dict[str, Any]) -> List[FramePlan]:
             frames.append(FramePlan(
                 frame_type=frame, exposure_s=float(spec["exp"]), count=n,
                 filter=spec.get("filter"), hwp_angle_deg=float(a),
-                retardance_deg=retard, pol_seq_id=seq_id, pol_seq_index=i,
+                pol_seq_id=seq_id, pol_seq_index=i,
                 object_name=obj, source_brick=name, **common,
             ))
         return frames

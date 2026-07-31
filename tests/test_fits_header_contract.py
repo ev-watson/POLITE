@@ -107,7 +107,7 @@ def test_science_provenance_cards_present_and_derived():
         pixscale=0.224,
         polarimetry=PolarimetryCards(
             hwp_angle_deg=22.5, instrument_rotator_deg=12.3,
-            eff_wavelength_nm=551.0, hwp_uncert_deg=0.012,
+            hwp_uncert_deg=0.012,
         ),
     )
     hdr = build_header(None, cfg, np.dtype(np.uint16), (4210, 6280))
@@ -124,6 +124,15 @@ def test_science_provenance_cards_present_and_derived():
     # Pointing seed carries no full WCS solution (solved in reduction).
     for absent in ("CTYPE1", "CD1_1", "CDELT1"):
         assert absent not in hdr
+
+    # A card records as-acquired state. Spec constants (Savart material and
+    # thickness, filter effective wavelength), quantities that must be measured
+    # to be trusted (beam separation and position angle, HWP retardance), and
+    # reduction results (modulation efficiency) are not written. WPUNCERT is the
+    # exception above: it is the uncertainty on HWPANG in this same frame.
+    for absent in ("RETARD", "BEAMSEP", "BEAMPA", "SAVMAT", "SAVTHK",
+                   "POLEFF", "WAVELEN"):
+        assert absent not in hdr, f"{absent} should not be written"
 
     # Derived time cards: end = start + exptime, avg = start + exptime/2.
     assert hdr["DATE-END"] == "2025-01-10T00:06:24.000"

@@ -1,9 +1,28 @@
 """Photometry: detection, o/e pairing, and aperture flux recovery."""
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
 
 import poltools as pt
+
+
+def test_measure_fluxes_requires_gain(cfg):
+    """Conversion gain is a per-night characterization value, not header state:
+    reduction fails closed (clear error) rather than using a silent nominal."""
+    cfg_nogain = replace(cfg, sensor=replace(cfg.sensor, gain_e_per_adu=None))
+    img = np.zeros((64, 64), dtype=float)
+    with pytest.raises(ValueError, match="gain"):
+        pt.measure_fluxes(img, [(32.0, 32.0)], cfg_nogain, r_ap=6, r_in=9, r_out=14)
+
+
+def test_measure_fluxes_requires_read_noise(cfg):
+    """Read noise is likewise per-night; absent it (and no ron_map) -> clear error."""
+    cfg_noron = replace(cfg, read_noise_e=None)
+    img = np.zeros((64, 64), dtype=float)
+    with pytest.raises(ValueError, match="read noise"):
+        pt.measure_fluxes(img, [(32.0, 32.0)], cfg_noron, r_ap=6, r_in=9, r_out=14)
 
 
 def test_detect_and_pair(cfg, rng):

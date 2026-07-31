@@ -49,6 +49,7 @@ from .dark import (
 )
 
 from .flat import (
+    conversion_gain_from_flat_pair,
     full_well_capacity,
     noise_decomposition,
     momsdom,
@@ -107,6 +108,7 @@ __all__ = [
     "momsdom",
     "photon_transfer_curve",
     "photon_transfer_curve_with_ron",
+    "conversion_gain_from_flat_pair",
     "full_well_capacity",
     "noise_decomposition",
     "linearity_test",

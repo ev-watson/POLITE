@@ -144,7 +144,6 @@ def simulate_sequence(
     rng = np.random.default_rng() if rng is None else rng
     out_dir = Path(out_dir).expanduser().resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
-    eff = render_kwargs.get("efficiency", 1.0)
 
     paths: List[Path] = []
     for i, ang in enumerate(cfg.hwp_angles_deg):
@@ -156,7 +155,6 @@ def simulate_sequence(
         p = pol_io.write_pol_fits(
             out_dir / fname, frame, ang, cfg, object_name=object_name,
             exptime_s=exptime_s, imagetyp="LIGHT", seq_id=seq_id, seq_index=i,
-            efficiency=eff,
         )
         paths.append(p)
     return paths

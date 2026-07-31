@@ -1,3 +1,4 @@
+import json
 from typing import Annotated, Dict, Optional
 
 from fastapi import APIRouter, Depends, Form, Header, HTTPException, Response
@@ -82,7 +83,24 @@ def _connected_property(device: CameraDevice, attr_name, params):
 #######################################
 @router.put("/{devnum}/action", summary="")
 async def action(devnum: int, params: AlpacaPutParams = Depends(alpaca_put_params)):
-    get_device(devnum)
+    device = get_device(devnum)
+    action_name = (params.get("Action") or "").strip().lower()
+    if action_name == "polite.effectivearea":
+        if not device.connected:
+            return MethodResponse.create(
+                client_transaction_id=params.client_transaction_id,
+                error=NotConnectedException(),
+            ).model_dump()
+        try:
+            return MethodResponse.create(
+                client_transaction_id=params.client_transaction_id,
+                value=json.dumps(device.effective_area, sort_keys=True),
+            ).model_dump()
+        except Exception as ex:
+            return MethodResponse.create(
+                client_transaction_id=params.client_transaction_id,
+                error=DriverException(0x500, "Camera.EffectiveArea failed", ex),
+            ).model_dump()
     return MethodResponse.create(
         client_transaction_id=params.client_transaction_id,
         error=NotImplementedException("Action"),
@@ -263,7 +281,7 @@ async def name(devnum: int, params: AlpacaGetParams = Depends()):
 async def supportedactions(devnum: int, params: AlpacaGetParams = Depends()):
     get_device(devnum)
     return PropertyResponse.create(
-        value=[],
+        value=["POLITE.EffectiveArea"],
         client_transaction_id=params.client_transaction_id,
     ).model_dump()
 

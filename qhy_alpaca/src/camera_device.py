@@ -78,6 +78,7 @@ class CameraDevice:
         self._pixel_size_y: float = 0.0
         self._max_bin_x: int = 1
         self._max_bin_y: int = 1
+        self._effective_area: Optional[Dict[str, int]] = None
 
         # ROI state (in binned pixels per ASCOM spec)
         self._bin_x: int = 1
@@ -293,6 +294,10 @@ class CameraDevice:
             self.handle, byref(eff_sx), byref(eff_sy), byref(eff_w), byref(eff_h)
         )
         if res == QHY_SUCCESS:
+            self._effective_area = {
+                "startx": int(eff_sx.value), "starty": int(eff_sy.value),
+                "numx": int(eff_w.value), "numy": int(eff_h.value),
+            }
             logger.debug(
                 f"Effective area: ({eff_sx.value},{eff_sy.value}) {eff_w.value}x{eff_h.value}"
             )
@@ -582,6 +587,13 @@ class CameraDevice:
     @property
     def camera_y_size(self) -> int:
         return self._camera_y_size
+
+    @property
+    def effective_area(self) -> Dict[str, int]:
+        """QHY SDK usable rectangle; raw sensor coordinates, never an ROI default."""
+        if self._effective_area is None:
+            raise RuntimeError("QHY effective area is unavailable before a successful connect")
+        return dict(self._effective_area)
 
     @property
     def can_abort_exposure(self) -> bool:

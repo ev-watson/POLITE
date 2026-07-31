@@ -20,8 +20,20 @@ def test_fits_roundtrip_byte_exact(cfg, rng, tmp_path):
     hdr = fits.getheader(str(p))
     assert hdr["BZERO"] == 32768
     assert hdr["HWPANG"] == 0.0
-    assert hdr["RETARD"] == cfg.retardance_deg
-    assert hdr["EGAIN"] == cfg.sensor.gain_e_per_adu
+    # Conversion gain / read noise are per-night characterization values and are
+    # intentionally NOT stamped into the header.
+    assert "EGAIN" not in hdr
+    assert "RON" not in hdr
+    # Neither are spec constants, measured geometry, or reduction results.
+    for absent in ("RETARD", "BEAMSEP", "BEAMPA", "SAVMAT", "SAVTHK",
+                   "POLEFF", "WAVELEN"):
+        assert absent not in hdr, f"{absent} should not be written"
+    # WPUNCERT qualifies HWPANG in the same frame, so it is written when known —
+    # but the simulator invents nothing, so it is absent unless passed.
+    assert "WPUNCERT" not in hdr
+    p2 = pt.write_pol_fits(tmp_path / "f2.fits", frame, 0.0, cfg,
+                           hwp_uncert_deg=0.012)
+    assert fits.getheader(str(p2))["WPUNCERT"] == pytest.approx(0.012)
 
 
 def test_sequence_writes_all_angles_and_groups(cfg, rng, tmp_path):
@@ -91,24 +103,98 @@ def test_sidecar_roundtrip_preserves_measured_beam_geometry(tmp_path):
     assert cfg.active_filter().characterized is True
 
 
-def test_fits_header_beam_geometry_is_characterized(tmp_path):
+def test_legacy_sidecar_placeholder_is_scrubbed_on_load(tmp_path):
+    """The retired 60 px placeholder cannot come back in through an old sidecar.
+
+    Sidecars written before 2026-07-29 are on disk under ``FITSDATA/`` (read-only),
+    so the scrub has to happen on load: an *uncharacterized* separation that fails
+    ``validate_beam_separation`` is replaced by the manufacturer nominal, loudly,
+    and stays flagged uncharacterized.
+    """
+    sidecar = tmp_path / "pol_config.yaml"
+    sidecar.write_text(
+        "session: LEGACY\n"
+        "detector:\n"
+        "  pixel_size_um: 3.76\n"
+        "  beam_separation_px: 60.0\n"
+        "  beam_position_angle_deg: 0.0\n"
+        "  beam_geometry_characterized: false\n"
+        "blocks: []\n",
+        encoding="utf-8",
+    )
+    with pytest.warns(UserWarning, match="unusable uncharacterized"):
+        cfg = pt.load_pol_config_sidecar(sidecar, filter_name="Photometric V")
+    assert cfg.beam.separation_px == pytest.approx(
+        pt.nominal_beam_separation_px(3.76))
+    assert cfg.active_filter().characterized is False
+
+
+def test_sidecar_declared_measured_geometry_is_never_overridden(tmp_path):
+    """A declared measurement is kept even when implausible — but warned about.
+
+    Silently replacing a value someone recorded as measured would be worse than
+    an implausible number: it would hide the disagreement instead of surfacing it.
+    """
+    sidecar = tmp_path / "pol_config.yaml"
+    sidecar.write_text(
+        "session: ODD\n"
+        "detector:\n"
+        "  pixel_size_um: 3.76\n"
+        "  beam_separation_px: 60.0\n"
+        "  beam_position_angle_deg: 12.0\n"
+        "  beam_geometry_characterized: true\n"
+        "blocks: []\n",
+        encoding="utf-8",
+    )
+    with pytest.warns(UserWarning, match="declares measured beam geometry"):
+        cfg = pt.load_pol_config_sidecar(sidecar, filter_name="Photometric V")
+    assert cfg.beam.separation_px == pytest.approx(60.0)
+    assert cfg.active_filter().characterized is True
+
+
+def test_fits_header_polconfig_never_claims_beam_geometry(tmp_path):
+    """A header-built config cannot assert beam geometry at all.
+
+    Separation and PA are found from the data after it is taken, so
+    ``polconfig_from_fits_headers`` has no argument for them: it always returns the
+    manufacturer nominal flagged uncharacterized. A measurement is attached
+    afterwards, and only by :meth:`PolConfig.with_beam_geometry`, which validates
+    it before flagging it measured.
+    """
     data = np.zeros((32, 48), dtype=np.uint16)
     header = fits.Header({
         "FILTER": "Photometric V",
-        "BEAMSEP": 239.5,
-        "BEAMPA": 328.2,
-        "EGAIN": 1.0,
         "XPIXSZ": 3.76,
         "INSTRUME": "test-detector",
         "GAIN": 0,
         "READMODE": 0,
         "PIXSCALE": 0.224,
-        "RON": 3.5,
         "INSTROT": 0.0,
     })
     path = tmp_path / "geometry.fits"
     fits.PrimaryHDU(data, header=header).writeto(path)
+
+    # Gain/RON/beam geometry are all absent from the header; polconfig must build.
     cfg = pt.polconfig_from_fits_headers(path)
-    assert cfg.beam.separation_px == pytest.approx(239.5)
-    assert cfg.beam.position_angle_deg == pytest.approx(328.2)
-    assert cfg.active_filter().characterized is True
+    assert cfg.sensor.gain_e_per_adu is None
+    assert cfg.read_noise_e is None
+    assert cfg.beam.separation_px == pytest.approx(pt.nominal_beam_separation_px(3.76))
+    assert cfg.beam.position_angle_deg == pytest.approx(0.0)
+    assert cfg.active_filter().characterized is False
+
+    # There is no way to assert geometry through the header constructor.
+    with pytest.raises(TypeError):
+        pt.polconfig_from_fits_headers(path, beam_separation_px=238.4)
+
+    # The measurement is attached afterwards, validated, and flagged measured.
+    meas = cfg.with_beam_geometry(238.4, 328.2)
+    assert meas.beam.separation_px == pytest.approx(238.4)
+    assert meas.beam.position_angle_deg == pytest.approx(328.2)
+    assert meas.active_filter().characterized is True
+    # ...and only the active band is promoted; the others stay nominal.
+    others = [f for f in meas.filters if f.name != meas.filter_name]
+    assert all(f.characterized is False for f in others)
+
+    # A retired placeholder cannot be laundered into a "measurement".
+    with pytest.raises(ValueError):
+        cfg.with_beam_geometry(60.0, 0.0)

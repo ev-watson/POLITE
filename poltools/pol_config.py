@@ -6,6 +6,7 @@ observatory capture software. No dependency on observatory-specific packages.
 """
 from __future__ import annotations
 
+import warnings
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,7 +18,13 @@ from astropy.io import fits
 import caltools as ct
 from caltools import SensorConfig
 
-from ._types import BeamGeometry, PolConfig, default_efw_filters
+from ._types import (
+    BeamGeometry,
+    PolConfig,
+    default_efw_filters,
+    nominal_beam_separation_px,
+    validate_beam_separation,
+)
 
 
 @dataclass
@@ -39,12 +46,53 @@ class SessionDetectorConfig:
     sensor_name: str = "QHY268M"
     nx: int = 6280
     ny: int = 4210
-    beam_separation_px: float = 60.0
+    # Beam geometry is measured from flats or standard-star pairs after the data
+    # are taken. The default is the manufacturer-nominal separation (0.9 mm on
+    # 3.76 µm pixels), never an arbitrary placeholder, and it stays flagged
+    # uncharacterized until a measurement replaces it.
+    beam_separation_px: float = nominal_beam_separation_px()
     beam_position_angle_deg: float = 0.0
     beam_geometry_characterized: bool = False
 
 
+def _beam_from_mapping(det: Dict[str, Any], pixel_um: float):
+    """Beam geometry from a sidecar mapping, scrubbed of retired placeholders.
+
+    Returns ``(separation_px, position_angle_deg, characterized)``. Missing
+    geometry falls back to the manufacturer nominal for ``pixel_um``. A stored
+    separation that fails :func:`validate_beam_separation` is a placeholder, not a
+    measurement — sidecars written before 2026-07-29 hold 60 px, ~75 % low — so an
+    *uncharacterized* one is replaced by the nominal with a warning. A value the
+    sidecar claims is characterized is kept (overriding a declared measurement
+    silently would be worse) but still warned about.
+    """
+    sep = det.get("beam_separation_px")
+    characterized = bool(det.get("beam_geometry_characterized", False))
+    pa = float(det.get("beam_position_angle_deg", 0.0))
+    if sep is None:
+        return nominal_beam_separation_px(pixel_um), pa, characterized
+    sep = float(sep)
+    ok, msg = validate_beam_separation(sep, pixel_um)
+    if ok:
+        return sep, pa, characterized
+    if characterized:
+        warnings.warn(
+            f"sidecar declares measured beam geometry but {msg}; "
+            "verify the measurement before reducing",
+            stacklevel=3,
+        )
+        return sep, pa, True
+    warnings.warn(
+        f"sidecar holds an unusable uncharacterized beam separation ({msg}); "
+        "falling back to the manufacturer nominal, still uncharacterized",
+        stacklevel=3,
+    )
+    return nominal_beam_separation_px(pixel_um), pa, False
+
+
 def _detector_from_mapping(det: Dict[str, Any]) -> SessionDetectorConfig:
+    pixel_um = float(det.get("pixel_size_um", 3.76))
+    beam_sep, beam_pa, beam_characterized = _beam_from_mapping(det, pixel_um)
     return SessionDetectorConfig(
         readout_mode=int(det.get("readout_mode", 0)),
         readout_mode_name=str(det.get("readout_mode_name", "Mode 0")),
@@ -57,16 +105,14 @@ def _detector_from_mapping(det: Dict[str, Any]) -> SessionDetectorConfig:
         ),
         ron_e=float(det["ron_e"]) if det.get("ron_e") is not None else None,
         cooler_setpoint_c=float(det.get("cooler_setpoint_c", -15.0)),
-        pixel_size_um=float(det.get("pixel_size_um", 3.76)),
+        pixel_size_um=pixel_um,
         plate_scale_arcsec=float(det.get("plate_scale_arcsec", 0.224)),
         sensor_name=str(det.get("sensor_name", "QHY268M")),
         nx=int(det.get("nx", 6280)),
         ny=int(det.get("ny", 4210)),
-        beam_separation_px=float(det.get("beam_separation_px", 60.0)),
-        beam_position_angle_deg=float(det.get("beam_position_angle_deg", 0.0)),
-        beam_geometry_characterized=bool(
-            det.get("beam_geometry_characterized", False)
-        ),
+        beam_separation_px=beam_sep,
+        beam_position_angle_deg=beam_pa,
+        beam_geometry_characterized=beam_characterized,
     )
 
 
@@ -176,17 +222,23 @@ def polconfig_from_fits_headers(
     sensor_name: Optional[str] = None,
     plate_scale_arcsec: Optional[float] = None,
     ron_e: Optional[float] = None,
-    beam_separation_px: Optional[float] = None,
-    beam_position_angle_deg: Optional[float] = None,
     instrument_rotator_deg: Optional[float] = None,
 ) -> PolConfig:
     """Build a :class:`PolConfig` from the shared FITS metadata contract.
 
-    Geometry/polarimetry metadata (GAIN, READMODE, PIXSCALE, BEAMSEP, BEAMPA,
-    INSTROT) come from the FITS header. Conversion gain (e-/ADU) and read noise
-    (e-) are per-night characterization values, NOT header state: they are used
-    only if passed explicitly (``egain_e_per_adu=`` / ``ron_e=``); otherwise they
-    stay ``None`` and reduction requires the analyst to supply them.
+    Acquisition metadata (GAIN, READMODE, PIXSCALE, INSTROT) comes from the FITS
+    header. Conversion gain (e-/ADU) and read noise (e-) are per-night
+    characterization values, NOT header state: they are used only if passed
+    explicitly (``egain_e_per_adu=`` / ``ron_e=``); otherwise they stay ``None``
+    and reduction requires the analyst to supply them.
+
+    Beam geometry is **not** an argument here at all. Separation and position
+    angle are found from the data after they are taken, so nothing a header can
+    offer is trustworthy and this constructor deliberately has no way to assert
+    them: the returned config carries the manufacturer-nominal separation flagged
+    ``beam_geometry_characterized=False``. Attach a measurement afterwards with
+    :meth:`PolConfig.with_beam_geometry`, which validates it and flags it
+    measured, or load the per-session ``pol_config.yaml`` sidecar that recorded it.
     """
     hdr = fits.getheader(str(path), ignore_missing_end=True)
     fname = filter_name or hdr.get("FILTER")
@@ -212,8 +264,10 @@ def polconfig_from_fits_headers(
     plate_scale = float(_required_or(plate_scale_arcsec, "PIXSCALE", "plate_scale_arcsec"))
     # Read noise is a per-night characterization value, not header state: optional.
     read_noise = float(ron_e) if ron_e is not None else None
-    beam_sep = float(_required_or(beam_separation_px, "BEAMSEP", "beam_separation_px"))
-    beam_pa = float(_required_or(beam_position_angle_deg, "BEAMPA", "beam_position_angle_deg"))
+    # Beam geometry is post-observation, so a header-built config never claims it:
+    # nominal separation keeps the config physically anchored and the
+    # uncharacterized flag keeps it honest. PolConfig.with_beam_geometry is the
+    # only way in.
     instrot = float(_required_or(instrument_rotator_deg, "INSTROT", "instrument_rotator_deg"))
 
     det = SessionDetectorConfig(
@@ -228,9 +282,9 @@ def polconfig_from_fits_headers(
         sensor_name=sensor.sensor_name,
         nx=sensor.nx,
         ny=sensor.ny,
-        beam_separation_px=beam_sep,
-        beam_position_angle_deg=beam_pa,
-        beam_geometry_characterized=True,
+        beam_separation_px=nominal_beam_separation_px(sensor.pixel_size_um),
+        beam_position_angle_deg=0.0,
+        beam_geometry_characterized=False,
     )
     return polconfig_from_detector(det, fname, instrument_rotator_deg=instrot)
 

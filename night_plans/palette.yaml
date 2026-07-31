@@ -19,10 +19,14 @@ bricks:
            exp: 45, n: 5}
 
   # --- calibration ---
+  # Bricks here carry NO readout_mode/gain/offset: a calibration frame is only
+  # usable at the same operating point as the science frames it calibrates, so
+  # these inherit the plan's camera: block (default Mode 5 / gain 56 / offset 20).
+  # Pin detector settings in camera:, never in a shared brick.
   bias:    {type: cal, frame: BIAS, exp: 0,  n: 20}
   darks60: {type: cal, frame: DARK, exp: 60, n: 15}
   darks30: {type: cal, frame: DARK, exp: 30, n: 15}
-  bias25:  {type: cal, frame: BIAS, exp: 0,  n: 25, readout_mode: 0, gain: 0}
+  bias25:  {type: cal, frame: BIAS, exp: 0,  n: 25}
 
   # First-light exposure variants (override per target in plan)
   polV8_03s:  {type: pol_seq, filter: "Photometric V", angles: 8, exp: 0.3, n: 3}

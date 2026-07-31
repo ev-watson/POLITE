@@ -37,7 +37,13 @@ from caltools import SensorConfig
 
 sensor = SensorConfig(nx=6280, ny=4210, pixel_size_um=3.76, gain_e_per_adu=1.0,
                       temperature_c=-10.0, sensor_name="QHY268M")
-cfg = pt.PolConfig(sensor=sensor, beam=pt.BeamGeometry(separation_px=60.0))
+# Beam separation is measured per band after the fact; seed it from the α-BBO
+# manufacturer spec (0.9 mm) and replace it with cfg.with_beam_geometry(...)
+# once flats or standard-star pairs give you the real value.
+cfg = pt.PolConfig(
+    sensor=sensor,
+    beam=pt.BeamGeometry(separation_px=pt.nominal_beam_separation_px()),
+)
 
 rng = np.random.default_rng(0)
 scene = pt.make_scene([(320, 240)], [(0.03, 0.02)], [5e6], names=["star"])

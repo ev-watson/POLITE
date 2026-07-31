@@ -9,11 +9,15 @@ devices:
     device_number: 0
     serial_number: 954e9347bc645f17e
     defaults:
+      # POLITE operating point: Mode 5 / gain 56 / offset 20 -- QHY's reported
+      # lowest-read-noise QHY268M mode at the lowest gain that still reaches the
+      # noise floor, keeping dynamic range (a first-order polarimetric concern).
+      # Mode 3 / gain 0 is the high-full-well alternative; set it in the plan.
       temperature: -15
-      readout_mode: 0
+      readout_mode: 5
       binning: 1
-      gain: 0
-      offset: 0
+      gain: 56
+      offset: 20
       usb_traffic: 10
       # Set True only if this camera has a QHYCCD GPS receiver module.
       has_gps: false

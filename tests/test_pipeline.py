@@ -1,5 +1,7 @@
 """End-to-end pipeline: 2D injection-recovery + Monte-Carlo pull calibration."""
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
 
@@ -10,6 +12,26 @@ from conftest import make_beamfluxes
 
 ANGLES4 = (0.0, 22.5, 45.0, 67.5)
 ANGLES8 = tuple(i * 22.5 for i in range(8))
+
+
+def test_stokes_invariant_to_gain(cfg, rng, tmp_path):
+    """q,u come from o/e flux ratios -> invariant to conversion gain (double_ratio
+    is unweighted). Only the error bars depend on gain/read-noise. This is why a
+    nominal header gain never mattered for the science result."""
+    positions = [(128.0, 128.0)]
+    # Dim source so neither gain crosses the saturation limit (would change masking).
+    scene = pt.make_scene(positions, [(1, 0.035, -0.02, 0)], [8.0e5])
+    cfg8 = cfg.with_hwp_angles(ANGLES8)
+    paths = pt.simulate_sequence(scene, cfg8, out_dir=tmp_path, exptime_s=15.0,
+                                 seeing_arcsec=2.0, sky_e_per_px=40.0, rng=rng,
+                                 shape=(256, 256))
+    cfg_hi = replace(cfg8, sensor=replace(cfg8.sensor, gain_e_per_adu=2.0))
+    r1 = pt.reduce_to_stokes([str(p) for p in paths], cfg8, o_positions=positions,
+                             method="double_ratio", r_ap=7, r_in=12, r_out=20)[0]
+    r2 = pt.reduce_to_stokes([str(p) for p in paths], cfg_hi, o_positions=positions,
+                             method="double_ratio", r_ap=7, r_in=12, r_out=20)[0]
+    assert r2.scalar_summary["q"] == pytest.approx(r1.scalar_summary["q"], abs=1e-9)
+    assert r2.scalar_summary["u"] == pytest.approx(r1.scalar_summary["u"], abs=1e-9)
 
 
 def test_end_to_end_2d_injection_recovery(cfg, rng, tmp_path):

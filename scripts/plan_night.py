@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
-"""Load a declarative brick-based night plan and preview or run it.
+"""Preview a declarative brick-based night plan (no hardware, no capture).
 
-    scripts/plan_night.py night_plans/example.yaml            # dry-run preview
-    scripts/plan_night.py night_plans/example.yaml --run      # execute the night
+    scripts/plan_night.py night_plans/example.yaml
 
-Dry-run expands the palette bricks into the concrete frame timeline (with an
-open-shutter exposure total) without touching hardware. ``--run`` hands the
-resulting NightSessionConfig to ``run_night_session`` (needs INDIGO/Alpaca +
-PWI4 up). See scripts/README.md and obs_utils/night_plan.py.
+Expands the palette bricks into the concrete frame timeline (with an
+open-shutter exposure total) so you can eyeball a plan before committing.
+This tool NEVER touches hardware.
+
+To actually run a plan, use the no-mount runner, which owns the settings
+banner, cooler gate, and per-invocation output subdirs::
+
+    scripts/execute_night.py night_plans/<plan>.yaml --run
+
+See scripts/README.md and obs_utils/night_plan.py.
 """
 from __future__ import annotations
 
@@ -27,8 +32,6 @@ def parse_args() -> argparse.Namespace:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     p.add_argument("plan", help="Path to a per-night plan YAML file")
-    p.add_argument("--run", action="store_true",
-                   help="Execute the night (default is a dry-run preview)")
     return p.parse_args()
 
 
@@ -41,13 +44,7 @@ def main() -> int:
         return 2
 
     print(describe(config))
-
-    if not args.run:
-        print("\n(dry-run; pass --run to execute)")
-        return 0
-
-    from obs_utils.night_session import run_night_session
-    run_night_session(config)
+    print("\n(preview only; run with scripts/execute_night.py <plan> --run)")
     return 0
 
 

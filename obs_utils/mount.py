@@ -1,26 +1,43 @@
 from __future__ import annotations
 
 import logging
-import time
 from typing import Iterable, Optional
 
 from .config import SlewLimits, SkyRegionLimit
 from .pwi4_client import PWI4
+from .waits import wait_until
 
 
 logger = logging.getLogger(__name__)
 
 
-def connect_mount(pwi4: PWI4, poll_s: float = 1.0) -> None:
+# Deadlines for the PWI4 waits below. They are generous -- a healthy mount beats
+# every one of them by a wide margin -- because their job is not to time the
+# hardware but to make sure a stuck device eventually raises. Notebooks share
+# one kernel with the camera, wheel, and HWP, so an unbounded poll here takes
+# those down with it (see obs_utils/waits.py).
+CONNECT_TIMEOUT_S = 30.0
+ENABLE_TIMEOUT_S = 60.0
+HOME_TIMEOUT_S = 300.0
+SLEW_TIMEOUT_S = 300.0
+
+
+def connect_mount(pwi4: PWI4, poll_s: float = 1.0, timeout_s: float = CONNECT_TIMEOUT_S) -> None:
     if pwi4.status().mount.is_connected:
         return
     logger.info("Connecting to mount")
     pwi4.mount_connect()
-    while not pwi4.status().mount.is_connected:
-        time.sleep(poll_s)
+    wait_until(
+        lambda: bool(pwi4.status().mount.is_connected),
+        timeout_s=timeout_s,
+        poll_s=poll_s,
+        what="mount connect",
+        detail="Check that the mount is powered and PWI4 shows it connected.",
+        on_error="retry",
+    )
 
 
-def enable_motors(pwi4: PWI4, poll_s: float = 1.0) -> None:
+def enable_motors(pwi4: PWI4, poll_s: float = 1.0, timeout_s: float = ENABLE_TIMEOUT_S) -> None:
     status = pwi4.status()
     if not status.mount.axis0.is_enabled:
         logger.info("Enabling axis 0")
@@ -29,32 +46,73 @@ def enable_motors(pwi4: PWI4, poll_s: float = 1.0) -> None:
         logger.info("Enabling axis 1")
         pwi4.mount_enable(1)
 
-    while True:
-        status = pwi4.status()
-        if status.mount.axis0.is_enabled and status.mount.axis1.is_enabled:
-            break
-        time.sleep(poll_s)
+    def both_enabled() -> bool:
+        st = pwi4.status()
+        return bool(st.mount.axis0.is_enabled and st.mount.axis1.is_enabled)
+
+    wait_until(
+        both_enabled,
+        timeout_s=timeout_s,
+        poll_s=poll_s,
+        what="mount axis enable",
+        detail=(
+            "One axis never energized. obs_utils.night_safety.verify_mount "
+            "reports which one."
+        ),
+    )
 
 
-def home_mount(pwi4: PWI4, poll_s: float = 1.0, settle_tol_deg: float = 0.001) -> None:
+def home_mount(
+    pwi4: PWI4,
+    poll_s: float = 1.0,
+    settle_tol_deg: float = 0.001,
+    timeout_s: float = HOME_TIMEOUT_S,
+) -> None:
+    """Home both axes, waiting until the reported positions stop changing.
+
+    .. warning::
+       The settle test below is **not** a proof that homing happened. It breaks
+       when two consecutive polls report the same position, which a *dead* drive
+       satisfies on the second poll -- so this can return "success" in ~1 s
+       without the axis having moved at all. The timeout added here bounds the
+       hang, not the false pass. Use
+       :func:`obs_utils.night_safety.verify_mount`, which checks the axes are
+       energized first, before trusting a home. Flagged 2026-07-30; fixing the
+       settle logic is a separate decision.
+    """
     logger.info("Finding home")
     pwi4.mount_find_home()
     last_axis0 = -99999.0
     last_axis1 = -99999.0
-    while True:
+
+    def settled() -> bool:
+        nonlocal last_axis0, last_axis1
         status = pwi4.status()
         delta0 = status.mount.axis0.position_degs - last_axis0
         delta1 = status.mount.axis1.position_degs - last_axis1
         if abs(delta0) < settle_tol_deg and abs(delta1) < settle_tol_deg:
-            break
+            return True
         last_axis0 = status.mount.axis0.position_degs
         last_axis1 = status.mount.axis1.position_degs
-        time.sleep(poll_s)
+        return False
+
+    wait_until(
+        settled,
+        timeout_s=timeout_s,
+        poll_s=poll_s,
+        what="mount homing",
+        detail="The axes never stopped moving. Stop the mount and check PWI4.",
+    )
 
 
-def wait_for_slew(pwi4: PWI4, poll_s: float = 0.2) -> None:
-    while pwi4.status().mount.is_slewing:
-        time.sleep(poll_s)
+def wait_for_slew(pwi4: PWI4, poll_s: float = 0.2, timeout_s: float = SLEW_TIMEOUT_S) -> None:
+    wait_until(
+        lambda: not pwi4.status().mount.is_slewing,
+        timeout_s=timeout_s,
+        poll_s=poll_s,
+        what="mount slew",
+        detail="The mount is still slewing. Check for a rate limit or a blocked axis.",
+    )
 
 
 def load_pointing_model(pwi4: PWI4, filename: str) -> None:

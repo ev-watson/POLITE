@@ -2,17 +2,17 @@
 # DEC drive is dead; engaging DEC auto-disconnects the mount. This plan NEVER
 # slews: bias/darks/flats need no pointing, and the science targets are
 # coordinate-less ("in the current field"), so the runner captures at whatever
-# fixed pointing the tube is stuck at. See salvage_no_pointing_checklist.(md|pdf).
+# fixed pointing the tube is stuck at.
 #
-# >>> HOW TO RUN (dead DEC: NEVER use plan_night.py --run) <<<
-# plan_night.py --run calls startup_observatory() -> enable_motors()+home_mount(),
-# which engages DEC and auto-disconnects the mount before any frame. Instead use
-# the NO-MOUNT salvage runner, which connects only camera+EFW+HWP:
-#   scripts/run_salvage_night.py night_plans/20260709_salvage.yaml            # dry-run preview
-#   scripts/run_salvage_night.py night_plans/20260709_salvage.yaml --run      # execute
-# It fail-closes if the ASCOM Remote EFW driver's filter Names don't match the
-# installed carousel (Clear,B,V,R,Dark) and pauses for the manual +45deg
-# whole-polarimeter rotation. plan_night.py stays valid ONLY as a dry-run check.
+# >>> HISTORICAL (executed + reduced 2026-07-09; kept as a brick-system example) <<<
+# Dead DEC: the runner must NEVER enable motors. Capture used a NO-MOUNT runner
+# (camera+EFW+HWP) that fail-closes if the ASCOM Remote EFW driver's filter Names
+# don't match the installed carousel (Clear,B,V,R,Dark) and pauses for the manual
+# +45deg whole-polarimeter rotation. plan_night.py previews only.
+# Re-run with: execute_night.py <this file> --run
+# (no target here names ra/dec or alt/az, so --mount auto leaves PWI4 alone and
+# no --unpointed acknowledgement is needed; the HWP comes up automatically
+# because the plan steps hwp_deg.)
 #
 # Goal is QUALITATIVE instrument commissioning: is HWP modulation present, can the
 # beam pair be tracked frame-by-frame, does the detector-frame Stokes vector

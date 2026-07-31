@@ -13,11 +13,15 @@ devices:
     # Optional: paste the serial fragment from scan_qhy_cameras.py (e.g. bc645f17e)
     serial_number: ""
     defaults:
+      # POLITE operating point: Mode 5 / gain 56 / offset 20 -- QHY's reported
+      # lowest-read-noise QHY268M mode at the lowest gain that still reaches the
+      # noise floor, keeping dynamic range (a first-order polarimetric concern).
+      # Mode 3 / gain 0 is the high-full-well alternative; set it in the plan.
       temperature: -15.0
-      readout_mode: 0
+      readout_mode: 5
       binning: 1
-      gain: 0
-      offset: 30
+      gain: 56
+      offset: 20
       usb_traffic: 10.0
       # QHY268M has no GPS receiver module — keep False so DATE-OBS uses the
       # system clock (NTP-synced) instead of a misparsed 1990s GPS header.

@@ -241,6 +241,24 @@ def _load_pol_config(
     raise FileNotFoundError("No pol_config.yaml sidecar or FITS path for PolConfig")
 
 
+def _uncharacterized_geometry_note(cfg: PolConfig) -> Optional[str]:
+    """WARN text when a gate is reducing on nominal, unmeasured beam geometry.
+
+    These gates are night-time diagnostics, so they run anyway (a QA WARN never
+    blocks capture) — but the numbers they print are only as good as the geometry
+    behind them, so the label travels with the result. Beam separation is measured
+    after the fact; until it is, the config carries the manufacturer nominal.
+    """
+    active = cfg.active_filter()
+    if active is None or active.characterized:
+        return None
+    return (
+        f"beam geometry for {cfg.filter_name!r} is nominal, not measured "
+        f"({cfg.beam.separation_px:.1f} px, PA {cfg.beam.position_angle_deg:.1f} "
+        "deg); o/e pairing and everything downstream are diagnostic only"
+    )
+
+
 def run_first_light_qa(
     paths: Sequence[Union[str, Path]],
     *,
@@ -284,8 +302,13 @@ def run_first_light_qa(
     warns: List[str] = []
     metrics: Dict[str, Any] = {}
 
+    geom_note = _uncharacterized_geometry_note(cfg)
+    if geom_note:
+        warns.append(geom_note)
+
     try:
-        r_dr = pt.reduce_to_stokes(files, cfg, method="double_ratio", detect=True)
+        r_dr = pt.reduce_to_stokes(files, cfg, method="double_ratio", detect=True,
+                                   allow_uncharacterized_geometry=True)
     except Exception as exc:
         return QAResult("first_light_qa", False, [f"double_ratio failed: {exc}"])
 
@@ -316,7 +339,8 @@ def run_first_light_qa(
 
     # lsq vs double_ratio is a cross-check, never a capture blocker -> WARN only.
     try:
-        r_lsq = pt.reduce_to_stokes(files, cfg, method="lsq", detect=True)
+        r_lsq = pt.reduce_to_stokes(files, cfg, method="lsq", detect=True,
+                                    allow_uncharacterized_geometry=True)
         if r_lsq:
             sl = r_lsq[0].scalar_summary
             dq = abs(sl.get("q", 0) - s.get("q", 0))
@@ -358,8 +382,10 @@ def run_flat_quality_gate(
 
     msgs: List[str] = []
     try:
-        r_lsq = pt.reduce_to_stokes(files, cfg, method="lsq", detect=True)
-        r_dr = pt.reduce_to_stokes(files, cfg, method="double_ratio", detect=True)
+        r_lsq = pt.reduce_to_stokes(files, cfg, method="lsq", detect=True,
+                                    allow_uncharacterized_geometry=True)
+        r_dr = pt.reduce_to_stokes(files, cfg, method="double_ratio", detect=True,
+                                   allow_uncharacterized_geometry=True)
     except Exception as exc:
         return QAResult("flat_quality_gate", False, [str(exc)])
 
@@ -371,6 +397,9 @@ def run_flat_quality_gate(
     du = abs(sl.get("u", 0) - sd.get("u", 0))
     mx = max(dq, du)
     warns: List[str] = []
+    geom_note = _uncharacterized_geometry_note(cfg)
+    if geom_note:
+        warns.append(geom_note)
     # A modest lsq/double_ratio disagreement flags flat quality but should not
     # block the night; only a gross disagreement (5x tol) is a hard failure.
     if mx > 5.0 * qu_tol:

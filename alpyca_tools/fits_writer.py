@@ -30,28 +30,44 @@ class DetectorCards:
 
 @dataclass
 class PolarimetryCards:
-    """Optional polarimetry header block (HWP + α-BBO Savart dual-beam metadata).
+    """Optional polarimetry header block (as-acquired HWP + sequence state).
 
     Mirrors ``poltools.io.POL_KEYWORDS`` so simulated and real POLITE frames carry
     identical cards. All fields optional; only the set ones are written.
-    ``INSTROT`` is the **PWI4 field-rotator** angle; the Savart material/thickness
-    default to the installed α-BBO 18 mm plate; per-band ``BEAMSEP``/``BEAMPA`` are
-    measured from flats.
+    ``INSTROT`` is the **PWI4 field-rotator** angle.
+
+    NB: ``HWPANG`` is the *commanded* angle. The Optec Pyxis Gen3 is open-loop
+    with no encoder, so there is nothing to read back; the rotator moves in
+    discrete steps and does not land exactly on a round angle. ``WPUNCERT``
+    carries that step quantization, which is why it is kept while other constant
+    instrument properties are not: it is the uncertainty on ``HWPANG`` in this
+    same frame, and a reduction weighting or fitting the modulation curve needs
+    it alongside the angle it qualifies.
+
+    Deliberately NOT carried here, on the same reasoning as conversion gain and
+    read noise in :class:`DetectorCards` — a header card should record what was
+    true of *this frame* at write time, not a spec constant or an analysis result:
+
+    - Savart material/thickness, and the plate's beam separation and position
+      angle. Separation is measured, not specified: the manufacturer-nominal
+      0.9 mm gives 239.4 px on 3.76 µm pixels where the 2026-07-09 measurement
+      gave 238.4 px (= 0.896 mm), and the α-BBO plate is dispersive so the true
+      value is per band, not one scalar. Beam geometry lives in the per-session
+      ``pol_config.yaml`` sidecar, which can flag it measured vs nominal
+      (``beam_geometry_characterized``); a FITS card cannot.
+    - HWP retardance. A real half-wave plate is half-wave only at its design
+      wavelength, so a nominal 180 would assert an ideal retarder.
+    - Modulation efficiency — a reduction result from polarized standards.
+    - Filter effective wavelength — a constant per band, recoverable from
+      ``FILTER``.
     """
 
-    hwp_angle_deg: Optional[float] = None             # HWPANG
-    retardance_deg: Optional[float] = None            # RETARD (HWP nominal 180)
+    hwp_angle_deg: Optional[float] = None             # HWPANG (commanded)
+    hwp_uncert_deg: Optional[float] = None            # WPUNCERT (open-loop step quant.)
     instrument_rotator_deg: Optional[float] = None    # INSTROT (PWI4 rotator)
-    pol_beam: Optional[str] = "dual"                  # POLBEAM
+    pol_beam: Optional[str] = "dual"                  # POLBEAM (data layout)
     pol_seq_id: Optional[str] = None                  # POLSEQ
     pol_seq_index: Optional[int] = None               # POLSEQN
-    pol_efficiency: Optional[float] = None            # POLEFF
-    beam_sep_px: Optional[float] = None               # BEAMSEP
-    beam_pa_deg: Optional[float] = None               # BEAMPA
-    savart_material: Optional[str] = "alpha-BBO"      # SAVMAT
-    savart_thickness_mm: Optional[float] = 18.0       # SAVTHK
-    eff_wavelength_nm: Optional[float] = None          # WAVELEN
-    hwp_uncert_deg: Optional[float] = None             # WPUNCERT (open-loop step quant.)
 
 
 @dataclass
@@ -247,19 +263,12 @@ def build_header(
     # Optional polarimetry block (mirrors poltools.io so real frames match sim).
     pol = cfg.polarimetry
     if pol is not None:
-        _set_card(hdr, "HWPANG", pol.hwp_angle_deg, "Half-wave-plate angle [deg]")
-        _set_card(hdr, "RETARD", pol.retardance_deg, "Retarder retardance delta [deg]")
+        _set_card(hdr, "HWPANG", pol.hwp_angle_deg, "Commanded half-wave-plate angle [deg]")
+        _set_card(hdr, "WPUNCERT", pol.hwp_uncert_deg, "HWPANG uncertainty, rotator step quant. [deg]")
         _set_card(hdr, "INSTROT", pol.instrument_rotator_deg, "PWI4 field-rotator angle [deg]")
         _set_card(hdr, "POLBEAM", pol.pol_beam, "Beam(s) recorded (o/e/dual)")
         _set_card(hdr, "POLSEQ", pol.pol_seq_id, "Polarimetry sequence identifier")
         _set_card(hdr, "POLSEQN", pol.pol_seq_index, "Index within polarimetry sequence")
-        _set_card(hdr, "POLEFF", pol.pol_efficiency, "Polarization (modulation) efficiency")
-        _set_card(hdr, "BEAMSEP", pol.beam_sep_px, "o<->e beam separation [px]")
-        _set_card(hdr, "BEAMPA", pol.beam_pa_deg, "o->e split position angle [deg]")
-        _set_card(hdr, "SAVMAT", pol.savart_material, "Savart-plate material")
-        _set_card(hdr, "SAVTHK", pol.savart_thickness_mm, "Savart-plate thickness [mm]")
-        _set_card(hdr, "WAVELEN", pol.eff_wavelength_nm, "Filter effective wavelength [nm]")
-        _set_card(hdr, "WPUNCERT", pol.hwp_uncert_deg, "HWP angle uncertainty [deg]")
 
     _set_card(hdr, "AIRMASS", cfg.airmass, "Airmass at start")
     _set_card(hdr, "RA", cfg.ra, "Right Ascension (sexagesimal)")
@@ -283,11 +292,14 @@ def build_header(
     _set_card(hdr, "SITEELEV", cfg.site_elev_m, "Site elevation [m]")
     _stamp_obsgeo(hdr, cfg.site_lat_deg, cfg.site_lon_deg, cfg.site_elev_m)
 
-    # Optics
-    _set_card(hdr, "FOCALLEN", cfg.focal_len_mm, "Focal length [mm]")
-    _set_card(hdr, "FOCRATIO", cfg.focal_ratio, "Focal ratio (f/#)")
+    # Optics. These are manufacturer-nominal, kept because they are standard
+    # keywords external tools read as astrometric seeds — not measurements. The
+    # true plate scale follows the focal length, which moves with focus and
+    # temperature, and comes from an astrometric solution in reduction.
+    _set_card(hdr, "FOCALLEN", cfg.focal_len_mm, "Nominal focal length [mm]")
+    _set_card(hdr, "FOCRATIO", cfg.focal_ratio, "Nominal focal ratio (f/#)")
     _set_card(hdr, "APTDIA", cfg.aperture_mm, "Aperture diameter [mm]")
-    _set_card(hdr, "PIXSCALE", cfg.pixscale, "Plate scale [arcsec/pixel]")
+    _set_card(hdr, "PIXSCALE", cfg.pixscale, "Nominal plate scale seed [arcsec/pixel]")
 
     for k, v in (cfg.wcs_cards or {}).items():
         _set_card(hdr, k, v)

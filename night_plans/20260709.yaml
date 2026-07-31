@@ -1,6 +1,6 @@
 # First-light night plan - 2026-07-09 (Julian Observatory)
-# Preview:  scripts/plan_night.py night_plans/20260709.yaml
-# Run:      scripts/plan_night.py night_plans/20260709.yaml --run
+# Preview:  scripts/plan_night.py    night_plans/20260709.yaml
+# Run:      scripts/execute_night.py night_plans/20260709.yaml --run
 
 uses: palette.yaml
 session: "20260709"

@@ -220,21 +220,24 @@ def dark_current_vs_temperature_plot(
     Expects the result returned by ``dark_current_vs_temperature()`` with
     metadata arrays ``temperatures_c``, ``dark_rates_e_per_s``, and
     ``dark_rate_errors_e_per_s``.
+
+    The Arrhenius overlay is drawn only when the fit coefficients are actually
+    present. ``dark_current_vs_temperature()`` omits them whenever it was called
+    with ``arrhenius_fit=False`` (its default), when fewer than three
+    temperatures span at least 1 C, or when ``curve_fit`` did not converge — in
+    which case it records ``arrhenius_fit_failed`` instead. Measured points are
+    always plotted; a missing fit annotates the axes rather than raising, so a
+    reduction that has data but no usable activation energy still produces a
+    figure.
     """
     md = dark_current_result.metadata
     temperatures_c = md["temperatures_c"]
     dark_rates_e_per_s = md["dark_rates_e_per_s"]
     dark_rate_errors_e_per_s = md["dark_rate_errors_e_per_s"]
 
-    if arrhenius_fit:
-        ss = dark_current_result.scalar_summary
-        A = ss["arrhenius_A"]
-        Ea = ss["arrhenius_Ea_eV"]
-        A_err = ss["arrhenius_A_err"]
-        Ea_err = ss["arrhenius_Ea_err_eV"]
-
-    xfit = np.linspace(min(temperatures_c) - 2, max(temperatures_c) + 2, 300)
-    yfit = arrhenius(xfit, A, Ea)
+    ss = dark_current_result.scalar_summary
+    fit_keys = ("arrhenius_A", "arrhenius_Ea_eV", "arrhenius_A_err", "arrhenius_Ea_err_eV")
+    have_fit = arrhenius_fit and all(key in ss for key in fit_keys)
 
     ax.errorbar(
         temperatures_c,
@@ -245,7 +248,23 @@ def dark_current_vs_temperature_plot(
         label="Exposure-fit dark current ± 1σ",
     )
 
-    ax.plot(xfit, yfit, "k-", label=f"Arrhenius fit: A={A:.3g}±{A_err:.3G}, Ea={Ea:.3G}±{Ea_err:.3G}")
+    if have_fit:
+        A, Ea, A_err, Ea_err = (ss[key] for key in fit_keys)
+        xfit = np.linspace(min(temperatures_c) - 2, max(temperatures_c) + 2, 300)
+        ax.plot(
+            xfit,
+            arrhenius(xfit, A, Ea),
+            "k-",
+            label=f"Arrhenius fit: A={A:.3g}±{A_err:.3G}, Ea={Ea:.3G}±{Ea_err:.3G}",
+        )
+    elif arrhenius_fit:
+        ax.annotate(
+            "No Arrhenius fit available",
+            xy=(0.02, 0.95),
+            xycoords="axes fraction",
+            va="top",
+            fontsize="small",
+        )
 
     ax.set(
         xlabel="Temperature (°C)",

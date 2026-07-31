@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import time
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -23,6 +22,7 @@ from .mount import (
 )
 from .pwi4_client import PWI4
 from .timing import NtpStatus, TimingConfig, acquire_session_timing_snapshot
+from .waits import wait_until
 
 
 logger = logging.getLogger(__name__)
@@ -53,35 +53,60 @@ class StartupState:
     alpaca_servers: Optional[AlpacaServerStatus] = None
 
 
-def _connect_rotator(pwi4: PWI4, poll_s: float = 0.5) -> None:
+# PWI4 auxiliary axes. Both are public so a notebook can bring up one device
+# without running the whole of startup_observatory(), which also homes the mount.
+#
+# NAMING: PWI4's ``rotator_*`` endpoints are the **field rotator** -- the
+# instrument de-rotator that holds sky position angle. It is NOT the half-wave
+# plate. The HWP is the Optec Pyxis, reached over serial or as an Alpaca rotator
+# (obs_utils.interactive.connect_hwp). Keep the two words apart everywhere.
+FIELD_ROTATOR_TIMEOUT_S = 60.0
+FOCUSER_TIMEOUT_S = 60.0
+
+
+def connect_field_rotator(
+    pwi4: PWI4, poll_s: float = 0.5, timeout_s: float = FIELD_ROTATOR_TIMEOUT_S
+) -> bool:
+    """Connect and enable the PWI4 field rotator. False when none is fitted."""
     status = pwi4.status()
     if not getattr(status.rotator, "exists", True):
-        logger.info("Rotator not present; skipping")
-        return
+        logger.info("Field rotator not present; skipping")
+        return False
 
     if not status.rotator.is_connected:
-        logger.info("Connecting rotator")
+        logger.info("Connecting field rotator")
         pwi4.rotator_connect()
 
     status = pwi4.status()
     if not status.rotator.is_enabled:
-        logger.info("Enabling rotator")
+        logger.info("Enabling field rotator")
         pwi4.rotator_enable()
 
-    while True:
-        status = pwi4.status()
-        if status.rotator.is_connected and status.rotator.is_enabled:
-            break
-        if not status.rotator.exists:
-            break
-        time.sleep(poll_s)
+    def ready() -> bool:
+        st = pwi4.status()
+        if not getattr(st.rotator, "exists", True):
+            return True
+        return bool(st.rotator.is_connected and st.rotator.is_enabled)
+
+    wait_until(
+        ready,
+        timeout_s=timeout_s,
+        poll_s=poll_s,
+        what="field rotator connect",
+        detail="Check the rotator power and its PWI4 tab.",
+        on_error="retry",
+    )
+    return bool(getattr(pwi4.status().rotator, "exists", True))
 
 
-def _connect_focuser(pwi4: PWI4, poll_s: float = 0.5) -> None:
+def connect_focuser(
+    pwi4: PWI4, poll_s: float = 0.5, timeout_s: float = FOCUSER_TIMEOUT_S
+) -> bool:
+    """Connect and enable the PWI4 focuser. False when none is fitted."""
     status = pwi4.status()
     if not getattr(status.focuser, "exists", True):
         logger.info("Focuser not present; skipping")
-        return
+        return False
 
     if not status.focuser.is_connected:
         logger.info("Connecting focuser")
@@ -92,13 +117,21 @@ def _connect_focuser(pwi4: PWI4, poll_s: float = 0.5) -> None:
         logger.info("Enabling focuser")
         pwi4.focuser_enable()
 
-    while True:
-        status = pwi4.status()
-        if status.focuser.is_connected and status.focuser.is_enabled:
-            break
-        if not status.focuser.exists:
-            break
-        time.sleep(poll_s)
+    def ready() -> bool:
+        st = pwi4.status()
+        if not getattr(st.focuser, "exists", True):
+            return True
+        return bool(st.focuser.is_connected and st.focuser.is_enabled)
+
+    wait_until(
+        ready,
+        timeout_s=timeout_s,
+        poll_s=poll_s,
+        what="focuser connect",
+        detail="Check the focuser power and its PWI4 tab.",
+        on_error="retry",
+    )
+    return bool(getattr(pwi4.status().focuser, "exists", True))
 
 
 def startup_observatory(config: StartupConfig) -> StartupState:
@@ -136,8 +169,8 @@ def startup_observatory(config: StartupConfig) -> StartupState:
     enable_motors(pwi4)
     home_mount(pwi4)
 
-    _connect_rotator(pwi4)
-    _connect_focuser(pwi4)
+    connect_field_rotator(pwi4)
+    connect_focuser(pwi4)
 
     if config.slew_time_constant_s is not None:
         set_slew_time_constant(pwi4, config.slew_time_constant_s)

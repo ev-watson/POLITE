@@ -110,6 +110,14 @@ Edit `config.yaml` to match your camera setup. Example settings:
 Camera properties (sensor size, pixel size, gain/offset ranges, exposure limits) are
 **queried from the SDK at connection time** — no hardcoding required.
 
+Both shipped profiles (`config.yaml`, `config.windows.yaml`) default to the POLITE
+QHY268M operating point: **readout mode 5, gain 56, offset 20**, −15 °C, bin 1. Mode 5
+is QHY's reported lowest-read-noise mode and gain 56 the lowest gain in it that still
+reaches that floor, which keeps dynamic range — a first-order constraint for
+polarimetry. Mode 3 / gain 0 is the high-full-well alternative. These are the same
+values as `SessionCaptureContext` in `obs_utils/session_context.py`; a night plan's
+`camera:` block overrides them per session, so keep the two in step.
+
 Multiple QHYCCD cameras can be registered by adding further entries under
 `devices:` with distinct `device_number` values.
 

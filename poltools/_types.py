@@ -33,11 +33,13 @@ from caltools import SensorConfig
 
 # --- Manufacturer instrument specifications (physical anchors) --------------
 # α-BBO Savart plate: manufacturer-stated centre-to-centre beam separation.
-# This is the *physical* anchor for the dual-beam geometry. Any configured or
-# measured separation should be validated against it (``validate_beam_separation``)
-# so an arbitrary placeholder (historically 60 px) cannot silently survive into a
-# reduction. On the QHY268M (3.76 µm pixels) 0.9 mm ≈ 239 px; the 2026-07-09
-# salvage night measured 238.4 px = 0.896 mm, confirming the spec to <0.5%.
+# This is the *physical* anchor for the dual-beam geometry and the only default
+# the package ships: every configured separation is seeded from it and validated
+# against it (``validate_beam_separation``), so no arbitrary placeholder can
+# survive into a reduction. On the QHY268M (3.76 µm pixels) 0.9 mm ≈ 239 px; the
+# 2026-07-09 salvage night measured 238.4 px = 0.896 mm, confirming the spec to
+# <0.5%. Sidecars written before 2026-07-29 may still hold the retired 60 px
+# placeholder on disk; the validator is what catches those on load.
 SAVART_BEAM_SEPARATION_MM = 0.9          # manufacturer nominal, α-BBO Savart plate
 QHY268M_PIXEL_SIZE_UM = 3.76             # IMX571 pixel pitch
 
@@ -64,9 +66,10 @@ def validate_beam_separation(
 
     Returns ``(ok, message)``. ``ok`` is False when ``separation_px`` deviates
     from :func:`nominal_beam_separation_px` by more than ``tol_frac`` (default
-    10 %), catching unphysical placeholders (e.g. the historical 60 px value,
-    ~75 % low) before they reach a reduction. ``message`` reports the value in mm
-    beside the nominal.
+    10 %), catching unphysical values before they reach a reduction — including
+    the 60 px placeholder retired on 2026-07-29, which is ~75 % low and is still
+    on disk in sidecars written before that date. ``message`` reports the value in
+    mm beside the nominal.
     """
     nominal = nominal_beam_separation_px(pixel_size_um)
     measured_mm = float(separation_px) * float(pixel_size_um) / 1000.0
@@ -141,16 +144,20 @@ class FilterConfig:
     characterized: bool = False
 
 
-def default_efw_filters(separation_px: float = 60.0,
+def default_efw_filters(separation_px: Optional[float] = None,
                         position_angle_deg: float = 0.0,
                         characterized: bool = False) -> Tuple[FilterConfig, ...]:
-    """Default POLITE ZWO 5-slot filter wheel with placeholder geometry.
+    """Default POLITE ZWO 5-slot filter wheel seeded at the nominal geometry.
 
-    ``beam`` is identical in every slot until measured per band from flat
-    fields or standard stars. Nominal Johnson–Cousins wavelengths are labels
+    ``separation_px`` defaults to :func:`nominal_beam_separation_px` — the
+    manufacturer spec, never an arbitrary number — and is identical in every slot
+    until measured per band from flat fields or standard stars, which is what
+    ``characterized`` records. Nominal Johnson–Cousins wavelengths are labels
     only.
     """
-    bg = BeamGeometry(separation_px=separation_px,
+    sep = (nominal_beam_separation_px() if separation_px is None
+           else float(separation_px))
+    bg = BeamGeometry(separation_px=sep,
                       position_angle_deg=position_angle_deg)
     return (
         FilterConfig("Clear", bg, eff_wavelength_nm=None,
@@ -221,6 +228,31 @@ class PolConfig:
     def with_hwp_angles(self, angles) -> "PolConfig":
         """Return a copy with a new half-wave plate angle sequence."""
         return replace(self, hwp_angles_deg=tuple(float(a) for a in angles))
+
+    def with_beam_geometry(self, separation_px: float,
+                           position_angle_deg: float) -> "PolConfig":
+        """Return a copy carrying *measured* beam geometry for the active filter.
+
+        Separation and position angle are found after the data are taken, from
+        flats or standard-star beam pairs — they are never acquisition state, so
+        this is the one way they enter a config. The active filter's registry
+        entry is updated alongside ``beam`` (so :meth:`for_filter` round-trips)
+        and marked ``characterized=True``. Raises ``ValueError`` if the value is
+        not physically plausible for the α-BBO Savart plate, so a typo or a
+        stale placeholder cannot be promoted to "measured".
+        """
+        ok, msg = validate_beam_separation(separation_px,
+                                          self.sensor.pixel_size_um)
+        if not ok:
+            raise ValueError(f"implausible measured beam geometry: {msg}")
+        bg = BeamGeometry(separation_px=float(separation_px),
+                          position_angle_deg=float(position_angle_deg))
+        filters = tuple(
+            replace(f, beam=bg, characterized=True)
+            if f.name == self.filter_name else f
+            for f in self.filters
+        )
+        return replace(self, beam=bg, filters=filters)
 
     def active_filter(self) -> Optional[FilterConfig]:
         """Registered :class:`FilterConfig` for ``filter_name``, or ``None``."""

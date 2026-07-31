@@ -95,6 +95,7 @@ def reduce_to_stokes(
     seeing_arcsec: float = 2.0,
     exclude_regions: Optional[Sequence[Tuple[float, float, float, float]]] = None,
     allow_mixed_sequences: bool = False,
+    allow_uncharacterized_geometry: bool = False,
 ) -> List[StokesResult]:
     """Reduce a half-wave plate sequence to per-source Stokes results.
 
@@ -134,6 +135,12 @@ def reduce_to_stokes(
         Permit intentional stacking across different ``OBJECT/POLSEQ`` values.
         False by default because mixing targets, repeats, or instrument rotations
         silently destroys their provenance.
+    allow_uncharacterized_geometry : bool
+        Permit ``detect=True`` pairing on a filter whose beam geometry is still
+        nominal rather than measured. False by default: the nominal separation is
+        close enough to the truth that pairing succeeds and returns plausible
+        numbers, which is exactly how an unmeasured geometry gets reported as a
+        result. Set True only for an explicitly diagnostic reduction.
     """
     reducers = {
         "lsq": mod.lsq_modulation,
@@ -187,13 +194,19 @@ def reduce_to_stokes(
             if not detect:
                 raise ValueError("Provide o_positions or set detect=True")
             active_filter = cfg_b.active_filter()
-            if active_filter is not None and not active_filter.characterized:
-                warnings.warn(
-                    f"filter {band!r}: beam geometry is an uncharacterized "
-                    f"placeholder (separation={cfg_b.beam.separation_px:.2f} px, "
-                    f"PA={cfg_b.beam.position_angle_deg:.2f} deg); automatic "
-                    "o/e pairing may fail or mis-pair sources",
-                    stacklevel=2,
+            if (active_filter is not None and not active_filter.characterized
+                    and not allow_uncharacterized_geometry):
+                raise ValueError(
+                    f"filter {band!r}: beam geometry is nominal, not measured "
+                    f"(separation={cfg_b.beam.separation_px:.2f} px, "
+                    f"PA={cfg_b.beam.position_angle_deg:.2f} deg). Automatic o/e "
+                    "pairing at the nominal separation succeeds close enough to "
+                    "look right while mis-pairing or biasing the split, so the "
+                    "result would not be traceable to a measurement. Measure the "
+                    "geometry from flats or standard-star pairs and attach it with "
+                    "PolConfig.with_beam_geometry(), or pass "
+                    "allow_uncharacterized_geometry=True for an explicitly "
+                    "diagnostic reduction."
                 )
             fwhm = fwhm_px if fwhm_px is not None else cfg_b.fwhm_px(seeing_arcsec)
             ref = frames_by_angle[sorted(frames_by_angle)[0]]

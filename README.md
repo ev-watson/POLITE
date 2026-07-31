@@ -17,7 +17,7 @@ Sky → PlaneWave CDK20 → PWI4 Focuser/Rotator → Astronomik L3 UV/IR-cut
     → α-BBO Savart plate (18 mm) → QHY268M (IMX571)
 ```
 
-Mount and rotator control use the PWI4 HTTP API; camera and filter wheel use ASCOM Alpaca. Night sessions are declarative Python scripts executed with logging, autoguiding, and dithering.
+Mount and rotator control use the PWI4 HTTP API; camera and filter wheel use ASCOM Alpaca. Night sessions are declarative YAML *brick* plans — previewed with `scripts/plan_night.py` and executed with `scripts/execute_night.py`.
 
 ## Project Structure
 
@@ -51,7 +51,7 @@ caltools/                Detector characterization (v0.1.0)
   stats.py               Welford accumulator, MAD sigma, outlier masking
   noise.py               Read noise maps, DSNU, FPN, RTN detection
   dark.py                Dark current vs exposure/temperature, warm pixels
-  gain.py                Photon transfer curve, full well, noise decomposition
+  flat.py                Master flat, photon transfer curve, full well, noise decomposition
   linearity.py           Linearity testing and error characterization
   prnu.py                Photo-response non-uniformity mapping
   plotting.py            Diagnostic plots
@@ -70,36 +70,82 @@ poltools/                Imaging polarimetry simulator + Stokes pipeline (v0.1.0
   pipeline.py            reduce_to_stokes (per-filter, end-to-end)
   plotting.py            Polarimetry diagnostic plots
 
-scripts/                 Night session automation scripts
-utils.py                 General-purpose astronomy utilities
-notebooks/               Jupyter notebooks (see notebooks/README.md)
+scripts/                 Operator scripts (server start, plan preview, execute, QA gates)
+night_plans/             palette.yaml + per-night brick plans (YYYYMMDD.yaml)
+notebooks/               Jupyter notebooks
+  templates/               Control-notebook palette — copy night.ipynb, then pull cells
+    night.ipynb              Starter, provenance card, non-moving connect/status
+    devices.ipynb            Explicit device operation (camera, EFW, HWP, PWI4 axes)
+    capture.ipynb            Supervised diagnostic/calibration/modulation captures
+    inspect.ipynb            Read-only frame, group, trend, and QA inspection
+  observatory_control.ipynb  Interactive night control (superseded by templates/)
   lab_control.ipynb        Interactive lab-bench control (persistent kernel)
-  observatory_control.ipynb  Interactive night control (startup->shutdown)
   polite.ipynb             Main analysis notebook
-  reduction.ipynb          Image reduction pipeline notebook
+  reductions/              Dated reduction notebooks (reduction_YYYYMMDD.ipynb)
 
 FITSDATA/                Raw FITS data organized by date (YYYYMMDD)
-datafiles/               Organized calibration and science frames
 ```
 
 ## Usage
 
-Night sessions are defined as Python scripts in `scripts/`:
+Night sessions are declarative YAML brick plans under `night_plans/` (bricks
+defined once in `palette.yaml`, laid under targets per night). Preview a plan,
+then execute it (settings banner, mount / filter-wheel / HWP gates, cooler gate,
+per-invocation output subdirs):
+
+```bash
+python scripts/plan_night.py    night_plans/example.yaml            # preview (no hardware)
+python scripts/execute_night.py night_plans/example.yaml --run      # execute
+```
+
+### Detector operating point
+
+The default is **Mode 5, gain 56, offset 20** on the QHY268M — QHY's reported
+lowest-read-noise mode, at the lowest gain within it that still reaches the noise
+floor, so the low noise costs as little dynamic range as possible. Dynamic range is a
+first-order constraint on polarimetry, not a nicety: Cole (2010, SAS) defocuses the
+PSF over ~6×6 px because the per-pixel well caps single-exposure signal, and his
+acquisition loop restarts the *entire* waveplate sequence when a max pixel saturates.
+**Mode 3, gain 0** is the alternative — highest full well of any mode, high but lower
+dynamic range — for observations where well depth binds.
+
+A plan inherits the default; set `camera:` in the plan only to deviate. A plan with no
+`camera:` block, or with a key the loader does not recognize, logs a WARN and
+continues on the defaults. Conversion gain (e⁻/ADU) and read noise (e⁻) are never plan
+inputs — they are per-night reduction results, measured in a notebook cell.
+
+Each device is connected only when the loaded plan actually uses it. The Pyxis
+HWP rotator comes up when the plan steps it (`--hwp auto`, the default), and
+`--hwp off` is refused on a plan that does — frames at an unknown plate angle are
+unreducible. The mount comes up when the plan names a sky position (`--mount
+auto`, the default), and `--mount off` is likewise refused on such a plan unless
+`--unpointed` is also given, because nothing in the resulting FITS would record
+that the telescope was never aimed at the object. Cal-only plans touch neither.
+Shared safety gates live in `obs_utils/night_safety.py`.
+
+> **Mount status.** POLITE's DEC drive (PWI4 axis 1) does not currently engage.
+> The pointing path above is complete and wired but has not been exercised
+> against a working mount — treat its first pointed night as commissioning.
+> Nothing is special-cased to the fault: `night_safety.verify_mount` energizes
+> both axes *with a deadline* and refuses to slew one that will not come up,
+> naming axis1 when that is the one that failed. When the drive is repaired the
+> same gate passes and pointed science runs with no code change.
+
+While a plan runs, watch it from a control notebook. Copy a template from
+`notebooks/templates/` and point `SESSION_DIR` at the night's directory:
 
 ```python
-from obs_utils import run_night_session, NightSessionConfig, TargetPlan, FramePlan
+from obs_utils import live
 
-config = NightSessionConfig(
-    targets=[
-        TargetPlan(
-            name="Jupiter",
-            ra_j2000_hrs=..., dec_j2000_deg=...,
-            frames=[FramePlan(frame_type="Light", exposure_s=12.0, count=12)]
-        )
-    ]
-)
-run_night_session(config)
+live.session_table("FITSDATA/20260717")        # what has landed so far
+live.watch("FITSDATA/20260717", every=10)      # block; report each new frame
+live.frame_report(live.latest_frame(d))        # image + histogram + stats
+live.qa_print(live.sequence_audit(d))          # end-of-night completeness
 ```
+
+`obs_utils.live` is read-only — it only reads FITS off disk — and uses the same
+sigma-clipping as `obs_utils/qa_lib.py`, so a number printed live is the number
+the gate will judge.
 
 Detector characterization:
 
@@ -124,13 +170,8 @@ results = pt.reduce_to_stokes(frame_paths, cfg, o_positions=positions, method="l
 by_sequence = pt.reduce_pol_sequences(frame_paths, cfg, o_positions=positions)
 ```
 
-Salvage first-light diagnostics (raw FITS are never edited; products remain
-provisional under `generated/`):
-
-```bash
-python scripts/analyze_salvage_first_light.py FITSDATA/20260709
-python scripts/reduce_salvage_drift_sequence.py FITSDATA/20260709
-```
+Per-night reductions live in `notebooks/reductions/reduction_YYYYMMDD.ipynb`
+(raw FITS are never edited; provisional products stay under `generated/`).
 
 ## Requirements
 

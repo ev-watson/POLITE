@@ -78,6 +78,19 @@ def configure_camera(camera: CameraDevice, settings: ExposureSettings) -> None:
     if settings.fast_readout is not None:
         camera.FastReadout = bool(settings.fast_readout)
 
+    requested = (
+        int(settings.startx), int(settings.starty),
+        int(camera.CameraXSize // camera.BinX) if settings.numx is None else int(settings.numx),
+        int(camera.CameraYSize // camera.BinY) if settings.numy is None else int(settings.numy),
+        int(settings.binx), int(settings.biny),
+    )
+    actual = (
+        int(camera.StartX), int(camera.StartY), int(camera.NumX), int(camera.NumY),
+        int(camera.BinX), int(camera.BinY),
+    )
+    if actual != requested:
+        raise RuntimeError(f"Camera ROI read-back {actual} does not match requested {requested}")
+
 
 def wait_ready(
     camera: CameraDevice,

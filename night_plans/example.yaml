@@ -1,11 +1,35 @@
 # Example per-night plan. Copy to night_plans/<YYYY-MM-DD>.yaml and edit.
-# Preview:  scripts/plan_night.py night_plans/example.yaml
-# Run:      scripts/plan_night.py night_plans/example.yaml --run
+# Preview:  scripts/plan_night.py    night_plans/example.yaml
+# Run:      scripts/execute_night.py night_plans/example.yaml --run
 
 uses: palette.yaml          # import the shared brick palette + catalog
 session: "20260710"
 observer: "E. Watson"
 calibrate_stage: after      # before | after | both
+
+# Detector operating point. These four values ARE the project defaults, spelled
+# out so a copied plan is self-documenting; delete the block and you get the same
+# numbers plus a WARN. An unrecognized key here is WARNed and ignored, not fatal.
+#
+#   Mode 5 / gain 56  — default. QHY's reported lowest-read-noise QHY268M mode,
+#     at the lowest gain in it that still reaches the noise floor. Going higher in
+#     gain keeps lowering read noise but spends full well and brings other effects,
+#     so this is the low-noise point that costs the least dynamic range. Dynamic
+#     range is a first-order polarimetric concern: Cole (2010) §4 defocuses over
+#     ~6x6 px because the per-pixel well caps single-exposure signal, and his §6
+#     loop restarts the entire waveplate sequence on a saturated max pixel.
+#   Mode 3 / gain 0   — highest full well of any mode, high (but lower than
+#     Mode 5 / gain 56) dynamic range. Switch to it when well depth binds.
+#
+# Conversion gain and read noise are reduction results, not plan inputs — measure
+# them in a notebook cell, never hardcode them here.
+camera:
+  readout_mode: 5
+  readout_mode_name: "Mode 5"
+  gain: 56
+  offset: 20
+  cooler_setpoint_c: -15.0
+  cooler_policy: at_or_below   # exact | at_or_below
 
 # Lay bricks under targets. A bare name resolves coords from the catalog;
 # a lay item can carry inline overrides, e.g. {polV8: {exp: 45}}.

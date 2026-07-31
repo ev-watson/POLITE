@@ -21,8 +21,8 @@
 # irrelevant under cloud.
 #
 # >>> HOW TO RUN <<<
-#   scripts/run_calibration_night.py night_plans/20260717_ptc_twilight.yaml                  # dry-run
-#   scripts/run_calibration_night.py night_plans/20260717_ptc_twilight.yaml --run
+#   scripts/execute_night.py night_plans/20260717_ptc_twilight.yaml                  # dry-run
+#   scripts/execute_night.py night_plans/20260717_ptc_twilight.yaml --run
 # The normal cooler gate is safe: the target is −15 C, or the current detector
 # temperature when it is already colder (at_or_below policy).
 # CONSOLE TUNE before the first sweep: take the dry-run, then one test frame
@@ -31,7 +31,7 @@
 # plan ~3 times across the window (each invocation auto-writes its own
 # ptc_twilight_<HHMM>/ subdir); the fading sky sweeps the levels down through
 # the full range: saturation -> read-noise floor.
-# NEVER use plan_night.py --run (it homes the mount -> disconnects dead DEC).
+# plan_night.py is preview-only; execute_night.py never enables motors (safe on dead DEC).
 
 uses: palette.yaml
 session: "20260717"          # data -> FITSDATA/20260717/<subdir>/

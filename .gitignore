@@ -26,19 +26,38 @@ generated/
 paperfigs/
 
 # local dev / project management
+# Markdown is ignored by default (agent scratch, handoffs, working notes), then
+# re-admitted BY LOCATION, not by extension:
+#
+#   docs/     operator- and science-facing documents. Tracked. Anything a fresh
+#             clone of the observatory PC needs to run a night goes here — the
+#             PC gets code by `git pull`, and a procedure that only exists on
+#             the developer's laptop is a procedure the operator does not have.
+#   root      agent and session scratch. Stays ignored.
+#
+# Per-file negations below are grandfathered co-located docs that belong beside
+# their code; do not add new ones — put new documents in docs/.
 CLAUDE.md
 AGENTS.md
-handoff.md
-MANUAL.md
+handoff*.md
 *.md
 !README.md
+!next-session-prompts.md
+!/docs/
+!/docs/**
+# Licensing files must never be silently dropped by the *.md rule. THIRD-PARTY-NOTICES.md
+# is created at the root by RELICENSE-AGPLv3.md Step 2 and would otherwise be skipped by
+# that step's `git add -A`, shipping the AGPL baseline with no third-party attribution.
+!THIRD-PARTY-NOTICES.md
+!/alpyca_tools/windows_bridge/checklist.md
+!/qhy_alpaca/UPSTREAM.md
+!/.codex/skills/*/SKILL.md
 prompts/
 reference-sheets/
 reports/
 tests/
 !/tests/
 !/tests/*.py
-docs/
 
 # PDFs (reference materials)
 *.pdf

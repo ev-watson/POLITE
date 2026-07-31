@@ -55,7 +55,6 @@ class FramePlan:
     # Polarimetry: when hwp_angle_deg is set, the Pyxis half-wave plate is moved
     # to this angle before the frame(s) and HWPANG/POLSEQ cards are written.
     hwp_angle_deg: Optional[float] = None
-    retardance_deg: Optional[float] = None
     pol_seq_id: Optional[str] = None
     pol_seq_index: Optional[int] = None
     source_brick: Optional[str] = None
@@ -335,15 +334,12 @@ def _build_header_config(
     polarimetry = None
     hwp = achieved_hwp_deg if achieved_hwp_deg is not None else plan.hwp_angle_deg
     if hwp is not None or plan.pol_seq_id is not None:
-        wavlen = ctx.filter_wavelength_nm(filter_name) if ctx else None
         polarimetry = PolarimetryCards(
             hwp_angle_deg=hwp,
-            retardance_deg=plan.retardance_deg if plan.retardance_deg is not None else 180.0,
+            hwp_uncert_deg=ctx.hwp_uncert_deg if ctx else None,
             instrument_rotator_deg=instrot_deg,
             pol_seq_id=plan.pol_seq_id,
             pol_seq_index=plan.pol_seq_index,
-            eff_wavelength_nm=wavlen,
-            hwp_uncert_deg=ctx.hwp_uncert_deg if ctx else None,
         )
 
     return FitsHeaderConfig(

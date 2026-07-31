@@ -1,153 +1,90 @@
 # POLITE scripts
 
-Observatory-control and bench scripts. The automation "brain" is the scripted
-POLITE stack (`alpyca` + PWI4); INDIGO hosts the server + `indigo_agent_alpaca`
-bridge and provides its Control Panel / simulators / FITS Preview for bring-up
-and quick-look — it does **not** replace these scripts.
+Operator entry points. All Python scripts add the repo root to `sys.path`, so
+run them from the repo root with the POLITE interpreter:
 
-Device split:
-- **INDIGO → Alpaca** (`:11111`): QHY268M camera, ZWO EFW filter wheel.
-- **Direct serial**: Optec Pyxis 2" **Gen3** HWP rotator via
-  `obs_utils/pyxis_gen3.py`. Its Gen3 controller protocol is incompatible with
-  INDIGO's legacy `indigo_rotator_optec`, so POLITE drives it natively over the
-  FTDI link (bypassing INDIGO/Alpaca for the rotator only). Bench-test with
-  `pyxis_gen3_test.py` (below) before wiring into night plans.
-- **PWI4** (`:8220`): PlaneWave mount + field rotator (`INSTROT`).
+    PY=/Users/blu3/miniforge3/envs/POLITE/bin/python
 
-## Observatory Windows — QHY268M SDK-direct bring-up
+The device stack: QHY268M camera + ZWO EFW filter wheel + Optec Pyxis HWP
+rotator are exposed over ASCOM Alpaca (INDIGO `indigo_agent_alpaca` bridge or
+the POLITE QHY Alpaca server); the PlaneWave mount + field rotator stay on
+PWI4. **DEC drive is down** — the pointing path below is wired but unexercised.
 
-When the QHY ASCOM driver fails but EZCAP works, the camera uses a separate
-SDK-direct Alpaca server on **:11112** (`qhy_alpaca/`).
-EFW + Pyxis stay on ASCOM Remote Server **:11111**.
+## Server
 
-```powershell
-git pull
-.\scripts\install_qhy_alpaca_deps.ps1    # once
-.\scripts\qhy268_bringup.ps1 -Step all
-```
+| Script | What it does |
+|---|---|
+| `launch_qhy_server.ps1` | Launch the POLITE QHY Alpaca camera server (obs PC / Windows). Shim; the implementation is `qhy_alpaca/scripts/start_qhy_alpaca_server.ps1`. |
 
-| Script | Step |
-|--------|------|
-| `scan_qhy_cameras.ps1` | SDK scan (close EZCAP first) |
-| `start_qhy_alpaca_server.ps1` | Camera Alpaca server :11112 |
-| `qhy_alpaca_smoke_test.py` | Camera-only FITS capture |
-| `observatory_smoke_test.py` | Mount + HWP + EFW + camera |
-| `qhy268_bringup.ps1` | Guided wrapper for all steps |
+## Night execution
 
-See `before_observations_checklist.md` for the full first-light checklist.
+| Script | What it does |
+|---|---|
+| `plan_night.py <plan.yaml>` | **Preview** a brick plan — expands the frame timeline + exposure total. Touches no hardware. |
+| `execute_night.py <plan.yaml> --run` | **Run** a brick plan (mount + camera + EFW + HWP). Settings banner with hardware read-back, fail-closed gain/offset/readout + EFW-name checks, conditional mount and HWP gates, cooler-stabilization gate, per-invocation output subdir. `--setpoint T`, `--yes`, `--skip-*-check`. |
 
-## Lab bring-up / testing pipeline
+Brick plans live in `night_plans/` (bricks defined once in `palette.yaml`).
 
-Exercises the HWP rotator + EFW + camera in one run — EFW + camera through the
-INDIGO→Alpaca path, the Pyxis **Gen3** HWP over native serial (its Gen3 protocol
-can't go through INDIGO). See the full procedure in
-[`docs/lab_trial_checklist.md`](../docs/lab_trial_checklist.md).
+**HWP.** `--hwp auto` (the default) connects the Pyxis rotator only when the
+loaded plan actually steps it, so a dark ladder never drags the rotator into the
+run and a polarimetry plan can never capture at an unknown angle: `--hwp off` on
+a plan with HWP bricks aborts before touching disk. Preflight moves to the
+plan's first angle and verifies arrival within `--hwp-tol` (default 0.25°, well
+above the open-loop Gen3's ~0.012° step quantization). Override with
+`--no-hwp-preflight` (no motion) or `--skip-hwp-check` (no gate).
 
-1. **`lab_trial_indigo.py`** — full bench smoke test of all three devices.
-   Each check is isolated so a partial lab setup still runs. The rotator check
-   is **read-only by default** (ping + status); homing/moving are opt-in.
+**Mount.** `--mount auto` (the default) connects PWI4 only when the plan names a
+sky position — `ra`/`dec` or `alt`/`az` on a target. `night_safety.verify_mount`
+then connects, energizes **both axes with a deadline**, homes, and logs the state
+it read back; a plan with coordinates run as `--mount off` aborts unless
+`--unpointed` is also given. Cal-only plans never touch the mount.
+`--no-mount-home` skips homing, `--park-on-finish` parks after the data is safe,
+`--skip-mount-check` downgrades the gate to a warning.
 
-   ```zsh
-   # Lab Mac: Pyxis Gen3 over serial (read-only), EFW + camera over INDIGO/Alpaca.
-   .../python scripts/lab_trial_indigo.py --host localhost:11111 \
-       --pyxis-serial --filterwheel 0 --camera 0 \
-       --filter-slot 1 --exposure 1.0 --dark --out ./lab_trial.fits
+POLITE's DEC drive (axis 1) does not currently engage, so this path has **not**
+been run against a working mount — the first pointed night is commissioning.
+Nothing is special-cased to the fault: the gate simply refuses to slew an axis
+that will not energize, and `obs_utils.mount.enable_motors`' unbounded `while
+True` poll is bypassed so a dead drive aborts in under a minute instead of
+hanging until dawn.
 
-   # ...add HWP motion (homes, then moves to 90°):
-   .../python scripts/lab_trial_indigo.py --host localhost:11111 \
-       --pyxis-serial --pyxis-home --pyxis-move --rotate-to 90 \
-       --filterwheel 0 --camera 0 --filter-slot 1 --exposure 1.0 --dark
-   ```
+**Detector settings.** The default operating point is **Mode 5, gain 56, offset
+20** (QHY's lowest-read-noise QHY268M mode at the lowest gain reaching that floor,
+chosen to preserve dynamic range — a first-order polarimetric constraint; **Mode 3,
+gain 0** is the high-full-well alternative). It comes from
+`SessionCaptureContext`, so a plan without a `camera:` block runs on it after a
+WARN naming the values; an unrecognized key inside `camera:` also WARNs and is
+ignored, which is what catches `offest: 20`. The settings banner then read-backs
+gain/offset/readout from hardware and the check is fail-closed. Conversion gain and
+read noise are reduction results and are not accepted here.
 
-   On the **observatory** Windows stack the Pyxis is an Alpaca rotator behind
-   Optec's Universal ASCOM driver — use `--rotator N` there instead of
-   `--pyxis-serial`.
+The shared safety gates live in `obs_utils/night_safety.py`, so the runner and
+the control notebooks judge a night by the same code.
 
-2. **`hwp_modulation_test.py`** — half-wave-plate modulation test.
-   - `--mode sim` (default, **no hardware**): validates the modulation logic
-     end-to-end with `poltools` (unpolarized → p≈0; polarized → recovers p/θ;
-     ≥8 angles adds the Fourier n=2/n=4 check). Refuses `<4` HWP angles.
+## QA gates
 
-     ```zsh
-     .../python scripts/hwp_modulation_test.py --angles 4
-     .../python scripts/hwp_modulation_test.py --angles 16
-     ```
-   - `--mode hardware`: bench dress-rehearsal — steps the Pyxis through the
-     angle sequence and captures one QHY frame per angle (FITS carries
-     `HWPANG`).
+Each prints a JSON `QAResult` and exits non-zero on FAIL. Also dispatched
+in-pipeline during a run via `obs_utils/qa_gates.py`.
 
-     ```zsh
-     .../python scripts/hwp_modulation_test.py --mode hardware --host localhost:11111 \
-         --rotator 0 --camera 0 --filterwheel 0 --filter-slot 1 \
-         --angles 8 --exposure 1.0 --object-name HWPTEST --out-dir ./FITSDATA/hwp_test
-     ```
+| Script | Gate |
+|---|---|
+| `bias_qa.py <paths>` | Bias histogram + read-noise (`--ron-target`, `--ron-tol`). |
+| `flat_quality_gate.py <paths>` | Flat quality: `lsq` vs `double_ratio` q,u discrepancy. |
+| `first_light_qa.py <paths>` | Polarimetric first-light gate against a standard. |
 
-## Observatory smoke test (Windows, production)
+## Analysis utilities
 
-**`observatory_smoke_test.py`** — the fastest end-to-end "is the whole chain
-alive?" check, run **on the observatory Windows PC**. Homes the mount, slews to a
-random field near zenith, rotates the HWP, picks an arbitrary filter, and writes
-one short light frame — minimal time, minimal checks (no plate-solve / focus /
-guiding). Mount + field rotator are PWI4 (`:8220`); camera + EFW + HWP-Pyxis are
-Alpaca devices on the Windows ASCOM Remote Server (`:11111`) — both `localhost`
-since the script runs on that PC. The HWP here is the **Alpaca** rotator behind
-Optec's Universal ASCOM driver (not the lab serial path).
+None. Analysis belongs in `caltools` / `poltools` and is driven from a notebook,
+not from a one-off script — the single-point Janesick gain check that used to
+live here is now `caltools.conversion_gain_from_flat_pair`, called from §8 of
+`notebooks/templates/cal_night.ipynb`.
 
-```zsh
-# HWP Pyxis is Alpaca Rotator #0 on the Remote Server (override with --rotator-index):
-.../python scripts/observatory_smoke_test.py --rotator-index 0
-# already-homed re-run, longer exposure, explicit output:
-.../python scripts/observatory_smoke_test.py --skip-home --exposure 3 --out D:/tmp/smoke.fits
-```
+## Site checklists
 
-## Native Pyxis Gen3 rotator (direct serial)
-
-The HWP-carrying Optec Pyxis 2" **Gen3** rotator is driven over its FTDI serial
-link by `obs_utils/pyxis_gen3.py` (`PyxisGen3` / `connect_pyxis_gen3`), *not*
-INDIGO — the Gen3 framed protocol (`<R1 ii CCCCCC …>` → `!ii … END`) is
-incompatible with INDIGO's legacy `indigo_rotator_optec` handshake. Serial port
-+ baud live in `obs_utils.user_config.PYXIS_CONFIG`.
-
-**`pyxis_gen3_test.py`** — bench verification of the driver. Run it once the
-Optec cable is plugged in (`ls /dev/cu.usbserial*`) and the rotator has 12 V
-power, to confirm the protocol/baud before wiring the HWP into night plans.
-The default run is **read-only** (ping + status); movement is opt-in.
-
-```zsh
-# read-only: connect, GETDNN ping, GETSTA status (probes baud automatically)
-.../python scripts/pyxis_gen3_test.py --port /dev/cu.usbserial-OP7XD6WD
-# home, then move to 90° and report the settled PA
-.../python scripts/pyxis_gen3_test.py --home --move 90
-# add -v to see raw TX/RX frames; --no-autodetect to lock the baud
-```
-
-The driver exposes an ASCOM-`Rotator`-compatible shim (`MoveAbsolute` /
-`IsMoving` / `Position` / `Connected`), so once hardware-verified it drops into
-`imaging.select_hwp_angle` / `pol_seq` bricks in place of the Alpaca rotator.
-Offline protocol logic is covered by `tests/` (fake-serial round-trips).
-
-## Building a night: brick-based plans (recommended)
-
-Instead of hand-typing a Python session script, describe a night as a **palette
-of reusable bricks** laid under targets — see [`../night_plans/`](../night_plans/)
-and `obs_utils/night_plan.py`.
-
-- [`night_plans/palette.yaml`](../night_plans/palette.yaml) — shared, committed:
-  reusable bricks (`polV8`, `L60x10`, `BVR45`, `darks60`, …) + a target catalog.
-- `night_plans/<date>.yaml` — per night: `uses: palette.yaml`, then a `plan:`
-  that lays bricks under targets, with inline overrides (`{polV8: {exp: 45}}`).
-
-Brick types: `stack`, `pol_seq` (HWP-angle sequence on the Pyxis → `HWPANG`
-frames), `filter_loop`, `cal`.
-
-```zsh
-# Preview the expanded frame timeline + exposure total (no hardware):
-.../python scripts/plan_night.py night_plans/example.yaml
-# Execute (needs INDIGO/Alpaca + PWI4 up):
-.../python scripts/plan_night.py night_plans/example.yaml --run
-```
-
-## Session + simulation
-
-- **`polarimetry_showcase.py`** — end-to-end `poltools` **simulation** showcase
-  (no hardware); writes figures/tables under `docs/polarimetry/`.
+Removed 2026-07-28. `generate_site_checklists.py` and the four PDFs it emitted
+hard-coded the retired July-9 plan and printed **unsafe** instructions — mount
+homing on a dead DEC drive, and a `plan_night --run` entry point that no longer
+exists. A checklist that contradicts the runner is worse than none. The
+authoritative pre-flight is now the runner itself: `execute_night.py` without
+`--run` prints the full execution order, the device set it will connect, and
+every gate it will apply.

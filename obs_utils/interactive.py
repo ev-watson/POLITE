@@ -34,9 +34,10 @@ Typical lab use (INDIGO alpaca agent + serial HWP, no telescope)::
 
 import atexit
 import logging
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
@@ -51,8 +52,54 @@ from .imaging import (
     select_hwp_angle,
 )
 from .pwi4_client import PWI4
+from .waits import wait_for_value, wait_until
 
 logger = logging.getLogger(__name__)
+
+
+# --------------------------------------------------------------------------- #
+# Helpers for centring (see ObservatorySession.center_on_pair)
+# --------------------------------------------------------------------------- #
+def _default_pol_config():
+    """The session's PolConfig, built from the current capture context."""
+    from .pol_config import session_pol_config_to_polconfig
+    from .session_context import SessionCaptureContext
+
+    return session_pol_config_to_polconfig(SessionCaptureContext())
+
+
+def _pixel_scale_arcsec(cfg: Any) -> Optional[float]:
+    """Pixel scale [arcsec/px] from a PolConfig, or ``None`` if it does not carry one."""
+    for owner in (cfg, getattr(cfg, "detector", None), getattr(cfg, "telescope", None)):
+        scale = getattr(owner, "pixel_scale_arcsec", None)
+        if isinstance(scale, (int, float)) and scale > 0:
+            return float(scale)
+    return None
+
+
+def _detector_to_sky(
+    dx_px: float,
+    dy_px: float,
+    scale_arcsec: float,
+    sky_pa_deg: Optional[float],
+    parity: int,
+) -> Tuple[Optional[float], Optional[float]]:
+    """Rotate a detector pixel offset into (east, north) arcsec.
+
+    Returns ``(None, None)`` when ``sky_pa_deg`` is not supplied. That is the
+    honest answer: how the detector is clocked relative to the sky has never been
+    measured on this instrument, and a slew computed from an assumed orientation
+    moves the target further away just as confidently as it would move it closer.
+    Establish the mapping on the first pointed night -- offset a known amount,
+    see which way the star went -- and pass it here.
+    """
+    if sky_pa_deg is None:
+        return None, None
+    pa = np.deg2rad(float(sky_pa_deg))
+    x = float(dx_px) * (1 if int(parity) >= 0 else -1)
+    east = (x * np.cos(pa) + float(dy_px) * np.sin(pa)) * scale_arcsec
+    north = (-x * np.sin(pa) + float(dy_px) * np.cos(pa)) * scale_arcsec
+    return float(east), float(north)
 
 
 # --------------------------------------------------------------------------- #
@@ -84,9 +131,47 @@ class ObservatorySession:
         return None if self.imaging is None else self.imaging.filter_wheel
 
     @property
-    def rotator(self):
-        """Alpaca (observatory) HWP rotator, if wired via INDIGO/ASCOM."""
+    def hwp_rotator(self):
+        """Alpaca (observatory) **half-wave plate** rotator, if wired via INDIGO/ASCOM.
+
+        Named in full because this project has two rotators and confusing them
+        is a data-losing mistake. This one is the Optec Pyxis: it modulates
+        polarization and its angle is the independent variable of a pol
+        sequence. The other is the PWI4 **field rotator**
+        (:attr:`field_rotator`), which holds sky position angle and has nothing
+        to do with polarimetry. ``self.imaging.rotator`` keeps the bare ASCOM
+        name because at the driver layer the only Alpaca rotator here is the HWP.
+        """
         return None if self.imaging is None else self.imaging.rotator
+
+    @property
+    def focuser(self):
+        """PWI4 focuser status section, or ``None`` when no PWI4 client is up."""
+        return self._pwi4_section("focuser")
+
+    @property
+    def field_rotator(self):
+        """PWI4 **field rotator** status section (the instrument de-rotator).
+
+        Not the half-wave plate -- see :attr:`hwp_rotator`.
+        """
+        return self._pwi4_section("rotator")
+
+    def _pwi4_section(self, name: str):
+        if self.pwi4 is None:
+            return None
+        try:
+            return getattr(self.pwi4.status(), name)
+        except Exception as exc:  # pragma: no cover - hardware/network dependent
+            logger.warning("PWI4 %s status unavailable: %r", name, exc)
+            return None
+
+    def _require_pwi4(self) -> PWI4:
+        if self.pwi4 is None:
+            raise RuntimeError(
+                "No PWI4 client. Run connect_mount() (or connect_all()) first."
+            )
+        return self.pwi4
 
     def _require_imaging(self) -> ImagingSession:
         if self.imaging is None:
@@ -180,6 +265,144 @@ class ObservatorySession:
         logger.info("HWP homed; Current PA = %.3f deg", final)
         return final
 
+    # ---- focuser (PWI4) --------------------------------------------------- #
+    def focus(self, position: float, *, timeout_s: float = 120.0, tol: float = 2.0) -> float:
+        """Move the focuser to an absolute position [steps]; return where it landed."""
+        pwi4 = self._require_pwi4()
+        logger.info("Focuser -> %.1f", float(position))
+        pwi4.focuser_goto(float(position))
+        return wait_for_value(
+            lambda: float(pwi4.status().focuser.position),
+            float(position),
+            tol=tol,
+            timeout_s=timeout_s,
+            what="focuser move",
+            detail="Check the focuser is enabled and not at a travel limit.",
+        )
+
+    def focus_relative(self, delta: float, **kwargs: Any) -> float:
+        """Jog the focuser by ``delta`` steps from where it is now."""
+        pwi4 = self._require_pwi4()
+        return self.focus(float(pwi4.status().focuser.position) + float(delta), **kwargs)
+
+    def focus_stop(self) -> None:
+        """Stop focuser motion immediately."""
+        self._require_pwi4().focuser_stop()
+        logger.info("Focuser stop commanded")
+
+    def focuser_status(self) -> Dict[str, Any]:
+        section = self.focuser
+        if section is None:
+            return {"connected": None}
+        return {
+            "exists": getattr(section, "exists", None),
+            "connected": getattr(section, "is_connected", None),
+            "enabled": getattr(section, "is_enabled", None),
+            "position": getattr(section, "position", None),
+            "moving": getattr(section, "is_moving", None),
+        }
+
+    def focus_sweep(
+        self,
+        positions: Sequence[float],
+        exposure_s: float,
+        *,
+        aperture_px: Optional[float] = None,
+        settle_s: float = 1.0,
+        **capture_kwargs: Any,
+    ) -> List[Tuple[float, Any]]:
+        """Step the focuser through ``positions``, measuring one star at each.
+
+        Returns ``[(position, StarProfile), ...]`` -- plot it with
+        :func:`obs_utils.live.focus_curve` and **read the minimum yourself**.
+        Nothing here picks a best focus or moves to one: the frames are cheap,
+        the judgement is not, and an autofocus that quietly lands on a cosmic
+        ray costs a whole sequence.
+
+        The focuser is left wherever the last step put it.
+        """
+        from . import focus as focus_metrics
+
+        pwi4 = self._require_pwi4()
+        start = float(pwi4.status().focuser.position)
+        logger.info(
+            "Focus sweep: %d points %.0f..%.0f (from %.0f)",
+            len(positions), min(positions), max(positions), start,
+        )
+        aperture = focus_metrics.DEFAULT_APERTURE_PX if aperture_px is None else aperture_px
+
+        results: List[Tuple[float, Any]] = []
+        for position in positions:
+            self.focus(float(position))
+            if settle_s:
+                time.sleep(settle_s)
+            frame = self.expose(exposure_s, **capture_kwargs)
+            profile = focus_metrics.star_profile(frame, aperture_px=aperture)
+            logger.info("  %8.1f  %s", float(position), profile.line())
+            results.append((float(position), profile))
+        return results
+
+    # ---- field rotator (PWI4) --------------------------------------------- #
+    # The instrument de-rotator. NOT the half-wave plate -- see hwp() above.
+    def field_rotator_goto_field(self, angle_deg: float, **kwargs: Any) -> float:
+        """Slew the field rotator to a sky position angle [deg]."""
+        pwi4 = self._require_pwi4()
+        logger.info("Field rotator -> field angle %.3f deg", float(angle_deg))
+        pwi4.rotator_goto_field(float(angle_deg))
+        return self._wait_field_rotator(
+            lambda st: float(st.rotator.field_angle_degs), float(angle_deg), **kwargs
+        )
+
+    def field_rotator_goto_mech(self, angle_deg: float, **kwargs: Any) -> float:
+        """Slew the field rotator to a mechanical angle [deg]."""
+        pwi4 = self._require_pwi4()
+        logger.info("Field rotator -> mech angle %.3f deg", float(angle_deg))
+        pwi4.rotator_goto_mech(float(angle_deg))
+        return self._wait_field_rotator(
+            lambda st: float(st.rotator.mech_position_degs), float(angle_deg), **kwargs
+        )
+
+    def field_rotator_offset(self, delta_deg: float, **kwargs: Any) -> float:
+        """Jog the field rotator by ``delta_deg`` from where it is now."""
+        pwi4 = self._require_pwi4()
+        logger.info("Field rotator jog %+.3f deg", float(delta_deg))
+        target = float(pwi4.status().rotator.mech_position_degs) + float(delta_deg)
+        pwi4.rotator_offset(float(delta_deg))
+        return self._wait_field_rotator(
+            lambda st: float(st.rotator.mech_position_degs), target, **kwargs
+        )
+
+    def field_rotator_stop(self) -> None:
+        """Stop field-rotator motion immediately."""
+        self._require_pwi4().rotator_stop()
+        logger.info("Field rotator stop commanded")
+
+    def _wait_field_rotator(
+        self, read, target: float, *, timeout_s: float = 180.0, tol: float = 0.05
+    ) -> float:
+        pwi4 = self._require_pwi4()
+        return wait_for_value(
+            lambda: read(pwi4.status()),
+            target,
+            tol=tol,
+            timeout_s=timeout_s,
+            what="field rotator move",
+            detail="Check the rotator is enabled and clear of its travel limit.",
+        )
+
+    def field_rotator_status(self) -> Dict[str, Any]:
+        section = self.field_rotator
+        if section is None:
+            return {"connected": None}
+        return {
+            "exists": getattr(section, "exists", None),
+            "connected": getattr(section, "is_connected", None),
+            "enabled": getattr(section, "is_enabled", None),
+            "mech_deg": getattr(section, "mech_position_degs", None),
+            "field_deg": getattr(section, "field_angle_degs", None),
+            "moving": getattr(section, "is_moving", None),
+        }
+
     # ---- camera ----------------------------------------------------------- #
     def expose(
         self,
@@ -230,6 +453,197 @@ class ObservatorySession:
         logger.info("Wrote %s", path)
         return path
 
+    # ---- cooler ----------------------------------------------------------- #
+    def cool_to(
+        self, setpoint_c: float, *, tol_c: float = 1.0, timeout_s: float = 1800.0
+    ) -> float:
+        """Set the cooler setpoint and wait for the sensor to reach it."""
+        cam = self.camera
+        if cam is None:
+            raise RuntimeError("No camera connected")
+        cam.CoolerOn = True
+        cam.SetCCDTemperature = float(setpoint_c)
+        logger.info("Cooler setpoint %.1f C; waiting for the sensor ...", float(setpoint_c))
+        return wait_for_value(
+            lambda: float(cam.CCDTemperature),
+            float(setpoint_c),
+            tol=tol_c,
+            timeout_s=timeout_s,
+            what="cooler settle",
+            detail="Check the ambient load and that the setpoint is reachable.",
+        )
+
+    def warm_up(
+        self,
+        *,
+        target_c: Optional[float] = None,
+        rate_c_per_min: float = 2.0,
+        step_c: float = 2.0,
+        timeout_s: float = 3600.0,
+    ) -> float:
+        """Ramp the sensor to ambient in steps, then switch the cooler off.
+
+        **CONJECTURED operational precaution:** a controlled warm-up is intended
+        to reduce thermal-shock and condensation risk. This project has not yet
+        verified a QHY manufacturer rate recommendation, so the default rate is
+        adjustable guidance, not an instrument specification.
+
+        ``target_c`` defaults to the camera's reported ambient (``HeatSinkTemperature``),
+        falling back to +15 C if the driver does not report one. Returns the final
+        sensor temperature.
+        """
+        cam = self.camera
+        if cam is None:
+            raise RuntimeError("No camera connected")
+
+        if target_c is None:
+            try:
+                target_c = float(cam.HeatSinkTemperature)
+            except Exception:
+                target_c = 15.0
+                logger.info("No ambient reading; ramping to %.1f C", target_c)
+
+        current = float(cam.CCDTemperature)
+        step_wait_s = max(1.0, 60.0 * abs(step_c) / max(rate_c_per_min, 0.1))
+        logger.info(
+            "Warm-up ramp: %.1f -> %.1f C in %.1f C steps at ~%.1f C/min",
+            current, float(target_c), abs(step_c), rate_c_per_min,
+        )
+
+        deadline = time.monotonic() + timeout_s
+        while current < float(target_c) - abs(step_c):
+            current = min(current + abs(step_c), float(target_c))
+            cam.SetCCDTemperature = current
+            logger.info("  setpoint %.1f C", current)
+            time.sleep(step_wait_s)
+            if time.monotonic() >= deadline:
+                logger.warning("Warm-up ramp hit its %.0f s budget; stopping the ramp", timeout_s)
+                break
+            current = float(cam.CCDTemperature)
+
+        cam.CoolerOn = False
+        final = float(cam.CCDTemperature)
+        logger.info("Cooler off at %.1f C", final)
+        return final
+
+    # ---- centring (no astrometry -- see TEMPLATE-OVERHAUL-PLAN.md section 0) - #
+    def center_on_pair(
+        self,
+        frame: Optional[np.ndarray] = None,
+        *,
+        exposure_s: float = 5.0,
+        target_xy: Optional[Tuple[float, float]] = None,
+        pixel_scale_arcsec: Optional[float] = None,
+        pol_config: Optional[Any] = None,
+        fwhm_px: float = 5.0,
+        threshold_sigma: float = 5.0,
+        tol_px: float = 4.0,
+        sky_pa_deg: Optional[float] = None,
+        parity: int = 1,
+        apply: bool = False,
+    ) -> Dict[str, Any]:
+        """Centre the brightest Savart beam **pair** on ``target_xy``. No plate solve.
+
+        The operational need at the telescope is "put my target in the middle",
+        not "give me an absolute WCS". Our plate solver (``ps3cli``) takes an
+        image file and nothing else, so the usual dual-beam fix -- detect
+        sources, drop one beam of each pair, solve the deduped list -- is not
+        reachable through it, and it has never been tried on a Savart-doubled
+        field. This path sidesteps the question entirely: the Savart offset is
+        already a characterized quantity, so the pair itself identifies the star.
+
+        **Fail-closed on uncharacterized geometry.** At the nominal ~239 px
+        separation a wrong pairing does not fail loudly -- it succeeds and looks
+        right -- so this refuses to run on a beam geometry nobody has measured,
+        exactly as ``poltools.reduce_to_stokes(detect=True)`` does.
+
+        Reports the offset by default and only slews when ``apply=True``.
+
+        ``sky_pa_deg`` and ``parity`` give the detector-to-sky mapping: the sky
+        position angle of the detector's +y axis, and +1 or -1 for whether the
+        field is mirrored. **Neither is calibrated on this instrument.** Without
+        them the offset is reported in pixels and no slew is possible -- see the
+        note at the conversion below.
+        """
+        from poltools.photometry import detect_sources, pair_oe
+
+        cfg = pol_config if pol_config is not None else _default_pol_config()
+        beam = getattr(cfg, "beam", cfg)
+        if not getattr(cfg, "beam_geometry_characterized", False):
+            raise RuntimeError(
+                "Beam geometry is not characterized, so a 'pair' found at the "
+                "nominal separation would be a guess that looks like a "
+                "measurement.\nFIX: measure the separation on a real frame and "
+                "attach it with PolConfig.with_beam_geometry(), or pass "
+                "pol_config= explicitly."
+            )
+
+        image = self.expose(exposure_s) if frame is None else np.asarray(frame)
+        if target_xy is None:
+            target_xy = (image.shape[1] / 2.0, image.shape[0] / 2.0)
+
+        pairs = pair_oe(
+            detect_sources(image, fwhm_px, threshold_sigma=threshold_sigma),
+            beam,
+            tol_px=tol_px,
+        )
+        if not pairs:
+            raise RuntimeError(
+                f"No beam pair found at separation {beam.separation_px:.1f} px "
+                f"(tol {tol_px} px). Either nothing is in the field, the exposure "
+                "is too short, or the geometry is wrong."
+            )
+
+        (xo, yo), (xe, ye) = pairs[0]
+        mid_x, mid_y = 0.5 * (xo + xe), 0.5 * (yo + ye)
+        dx_px, dy_px = target_xy[0] - mid_x, target_xy[1] - mid_y
+
+        result: Dict[str, Any] = {
+            "pairs_found": len(pairs),
+            "ordinary_xy": (xo, yo),
+            "extraordinary_xy": (xe, ye),
+            "midpoint_xy": (mid_x, mid_y),
+            "target_xy": tuple(target_xy),
+            "offset_px": (dx_px, dy_px),
+            "applied": False,
+        }
+
+        scale = pixel_scale_arcsec if pixel_scale_arcsec is not None else _pixel_scale_arcsec(cfg)
+        if scale is None:
+            logger.warning("No pixel scale available; reporting the offset in pixels only.")
+            return result
+
+        # Detector pixels -> sky. The rotation between the two is NOT a known
+        # quantity on this instrument: it depends on how the camera is clocked in
+        # its adapter and on the field rotator angle, and nothing has measured it.
+        # Guessing it would slew the wrong way with total confidence, so the sky
+        # offset is only computed when the caller states the mapping.
+        east_arcsec, north_arcsec = _detector_to_sky(dx_px, dy_px, scale, sky_pa_deg, parity)
+        if east_arcsec is None:
+            result["needs_sky_orientation"] = True
+            logger.info(
+                "Offset to centre: %+.1f, %+.1f px (|%.1f| arcsec). Sky direction "
+                "unknown -- pass sky_pa_deg= and parity= to convert, or nudge with "
+                "mount_offset by hand and watch which way the star moves.",
+                dx_px, dy_px, float(np.hypot(dx_px, dy_px)) * scale,
+            )
+            return result
+
+        result["offset_arcsec_east_north"] = (east_arcsec, north_arcsec)
+        if not apply:
+            logger.info(
+                "Offset to centre: %+.1f, %+.1f px -> E %+.1f, N %+.1f arcsec. "
+                "Re-run with apply=True to slew.",
+                dx_px, dy_px, east_arcsec, north_arcsec,
+            )
+            return result
+
+        pwi4 = self._require_pwi4()
+        pwi4.mount_offset(ra_add_arcsec=east_arcsec, dec_add_arcsec=north_arcsec)
+        result["applied"] = True
+        logger.info("Applied mount offset E %+.1f, N %+.1f arcsec", east_arcsec, north_arcsec)
+        return result
+
     # ---- status ----------------------------------------------------------- #
     def status(self, pretty: bool = True) -> Dict[str, Any]:
         """Collect a health summary. Each subsystem is probed independently so a
@@ -239,6 +653,8 @@ class ObservatorySession:
             "instrument": self._instrument_status(),
             "hwp": self._hwp_status(),
             "mount": self._mount_status(),
+            "focuser": self.focuser_status(),
+            "field_rotator": self.field_rotator_status(),
         }
         if pretty:
             _print_status(info)
@@ -276,7 +692,7 @@ class ObservatorySession:
             except Exception as exc:  # pragma: no cover
                 out["error"] = repr(exc)
             return out
-        rot = self.rotator
+        rot = self.hwp_rotator
         if rot is not None:
             out = {"backend": "alpaca"}
             try:
@@ -467,28 +883,120 @@ def connect_filter_wheel(
     return session
 
 
-def connect_rotator(
+def connect_hwp(
     *, alpaca_config: Optional[AlpacaConfig] = None, reuse: bool = True
 ) -> ObservatorySession:
-    """Connect only the Alpaca HWP rotator (observatory path) and attach it.
+    """Connect only the Alpaca **half-wave plate** rotator (observatory path).
 
-    For the lab bench's native-serial Pyxis Gen3, use ``connect(pyxis_serial=True)``
-    instead -- the serial port is exclusive and homed through its own driver.
+    Not the field rotator -- that is :func:`connect_field_rotator`, on PWI4.
+
+    For the lab bench's native-serial Pyxis Gen3, use :func:`connect_hwp_serial`
+    instead: the serial port is exclusive and homes through its own driver.
     """
-    from .alpaca import connect_rotator as _connect_rotator
+    from .alpaca import connect_rotator as _connect_alpaca_rotator
 
     session = _ensure_session()
     cfg = alpaca_config or _uc.ALPACA_CONFIG
     if cfg.rotator_index is None:
         raise RuntimeError(
-            "AlpacaConfig.rotator_index is None -- no Alpaca rotator configured. "
-            "For the lab serial Pyxis use connect(pyxis_serial=True)."
+            "AlpacaConfig.rotator_index is None -- no Alpaca HWP rotator configured. "
+            "For the lab serial Pyxis use connect_hwp_serial()."
         )
     imaging = _ensure_imaging(session, cfg)
     if not (reuse and imaging.rotator is not None):
-        imaging.rotator = _connect_rotator(cfg.host, cfg.rotator_index)
-        logger.info("Alpaca rotator connected on %s (device=%d)", cfg.host, cfg.rotator_index)
+        imaging.rotator = _connect_alpaca_rotator(cfg.host, cfg.rotator_index)
+        logger.info("Alpaca HWP rotator connected on %s (device=%d)", cfg.host, cfg.rotator_index)
     _SESSION = session
+    return session
+
+
+def connect_focuser(
+    *, pwi4_config: Optional[Pwi4Config] = None, timeout_s: Optional[float] = None
+) -> ObservatorySession:
+    """Connect and enable the PWI4 focuser (no motion). Bounded in time."""
+    from .startup import FOCUSER_TIMEOUT_S, connect_focuser as _connect_focuser
+
+    session = connect_mount(pwi4_config=pwi4_config)
+    fitted = _connect_focuser(
+        session.pwi4, timeout_s=FOCUSER_TIMEOUT_S if timeout_s is None else timeout_s
+    )
+    logger.info("Focuser %s", "connected and enabled" if fitted else "not fitted")
+    return session
+
+
+def connect_field_rotator(
+    *, pwi4_config: Optional[Pwi4Config] = None, timeout_s: Optional[float] = None
+) -> ObservatorySession:
+    """Connect and enable the PWI4 **field rotator** (no motion). Bounded in time.
+
+    The instrument de-rotator, not the half-wave plate -- see :func:`connect_hwp`.
+    """
+    from .startup import FIELD_ROTATOR_TIMEOUT_S, connect_field_rotator as _connect_fr
+
+    session = connect_mount(pwi4_config=pwi4_config)
+    fitted = _connect_fr(
+        session.pwi4, timeout_s=FIELD_ROTATOR_TIMEOUT_S if timeout_s is None else timeout_s
+    )
+    logger.info("Field rotator %s", "connected and enabled" if fitted else "not fitted")
+    return session
+
+
+def connect_all(
+    *,
+    alpaca: bool = True,
+    mount: bool = True,
+    focuser: bool = True,
+    field_rotator: bool = True,
+    hwp_serial: bool = False,
+    alpaca_config: Optional[AlpacaConfig] = None,
+    pwi4_config: Optional[Pwi4Config] = None,
+    pyxis_config: Optional[PyxisSerialConfig] = None,
+) -> ObservatorySession:
+    """Bring up every configured device, one at a time, and report what came up.
+
+    Fault-isolated: each device is attempted independently and a failure is
+    logged, not raised, so one dead component cannot cost you the rest of the
+    assembly. Check :meth:`ObservatorySession.status` afterwards -- this returns
+    a session, not a promise that everything in it is live.
+
+    **This never moves anything.** It connects and energizes only. That is the
+    difference from :func:`obs_utils.startup.startup_observatory`, which also
+    homes the mount and loads a pointing model; homing is physical motion across
+    both axes and stays an explicit, separate step.
+
+    ``hwp_serial`` selects the lab bench's native-serial Pyxis over the
+    observatory's Alpaca HWP. The two are mutually exclusive: the serial port is
+    exclusive, and the Alpaca driver would be talking to the same device.
+    """
+    session = _ensure_session()
+    attempts = []
+    if alpaca:
+        attempts.append(("camera", lambda: connect_camera(alpaca_config=alpaca_config)))
+        attempts.append(("filter wheel", lambda: connect_filter_wheel(alpaca_config=alpaca_config)))
+        if not hwp_serial:
+            attempts.append(("hwp (alpaca)", lambda: connect_hwp(alpaca_config=alpaca_config)))
+    if hwp_serial:
+        attempts.append(("hwp (serial)", lambda: connect_hwp_serial(pyxis_config=pyxis_config)))
+    if mount:
+        attempts.append(("mount (pwi4 client)", lambda: connect_mount(pwi4_config=pwi4_config)))
+    if focuser:
+        attempts.append(("focuser", lambda: connect_focuser(pwi4_config=pwi4_config)))
+    if field_rotator:
+        attempts.append(("field rotator", lambda: connect_field_rotator(pwi4_config=pwi4_config)))
+
+    up, down = [], []
+    for name, action in attempts:
+        try:
+            session = action()
+            up.append(name)
+        except Exception as exc:
+            down.append(name)
+            logger.warning("%s did NOT connect: %r", name, exc)
+
+    print("connected :", ", ".join(up) if up else "(nothing)")
+    if down:
+        print("FAILED    :", ", ".join(down))
+        print("Each device is independent -- the connected ones above are usable.")
     return session
 
 
@@ -556,7 +1064,7 @@ def _print_status(info: Dict[str, Any]) -> None:
     mount = info["mount"]
 
     print("POLITE interactive session")
-    print("-" * 40)
+    print("-" * 52)
 
     if not inst.get("connected"):
         print("instrument : (not connected)")
@@ -598,3 +1106,26 @@ def _print_status(info: Dict[str, Any]) -> None:
             f"mount      : connected={mount.get('connected')} "
             f"slewing={mount.get('slewing')} tracking={mount.get('tracking')}{coord}"
         )
+
+    _print_pwi4_axis("focuser", info.get("focuser"), ("position", "pos", "{:.1f}"))
+    _print_pwi4_axis(
+        "field rot", info.get("field_rotator"), ("field_deg", "field", "{:.3f} deg")
+    )
+
+
+def _print_pwi4_axis(label: str, section: Optional[Dict[str, Any]], value) -> None:
+    """One status line for a PWI4 auxiliary axis (focuser / field rotator)."""
+    key, caption, fmt = value
+    if not section or section.get("connected") is None:
+        print(f"{label:<11}: (no PWI4 client)")
+        return
+    if section.get("exists") is False:
+        print(f"{label:<11}: (not fitted)")
+        return
+    reading = section.get(key)
+    shown = fmt.format(reading) if isinstance(reading, (int, float)) else "?"
+    print(
+        f"{label:<11}: connected={section.get('connected')} "
+        f"enabled={section.get('enabled')} {caption}={shown} "
+        f"moving={section.get('moving')}"
+    )

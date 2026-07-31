@@ -238,6 +238,112 @@ def photon_transfer_curve_with_ron(
     )
 
 
+def _central_region(data: np.ndarray, fraction: float) -> np.ndarray:
+    """Return a centered rectangular region occupying ``fraction`` per axis."""
+    if data.ndim != 2:
+        raise ValueError(f"Expected a 2-D image, got shape {data.shape}")
+    if not 0 < fraction <= 1:
+        raise ValueError("central fraction must be in (0, 1]")
+    ny, nx = data.shape
+    height = max(1, round(ny * fraction))
+    width = max(1, round(nx * fraction))
+    y0 = (ny - height) // 2
+    x0 = (nx - width) // 2
+    return data[y0:y0 + height, x0:x0 + width]
+
+
+def conversion_gain_from_flat_pair(
+    flat_a: np.ndarray,
+    flat_b: np.ndarray,
+    bias_a: np.ndarray,
+    bias_b: np.ndarray,
+    central_fraction: float = 1.0,
+) -> AnalysisResult:
+    """Single-point Janesick conversion gain from one equal-exposure flat pair.
+
+    The fast preliminary check, for use at the telescope while a calibration
+    ladder is still being taken::
+
+        e-/ADU = (mean(flat_a) + mean(flat_b) - mean(bias_a) - mean(bias_b))
+                 / variance(flat_a - flat_b)
+
+    Differencing the pair cancels the fixed pattern, so the remaining variance
+    is shot noise plus twice the read-noise variance; at flat levels well above
+    the read noise the latter is negligible and the ratio is the gain. The
+    method assumes both flats share the same illumination and sit in the linear
+    regime. It is preliminary by construction: :func:`photon_transfer_curve` over
+    the full ladder is the definitive conversion-gain measurement, because it
+    resolves the read-noise intercept instead of assuming it away.
+
+    Parameters
+    ----------
+    flat_a, flat_b : 2-D array
+        Equal-exposure flat frames (ADU).
+    bias_a, bias_b : 2-D array
+        Bias frames from the same settings (ADU).
+    central_fraction : float, optional
+        Fraction of each image dimension to use, centered. Defaults to 1.0
+        (the whole frame); 0.5 restricts to the central quarter by area, which
+        avoids vignetted corners on a poorly flattened dome/sky flat.
+
+    Returns
+    -------
+    AnalysisResult with ``conversion_gain_e_per_adu`` in ``scalar_summary``.
+
+    Raises
+    ------
+    ValueError
+        If the four regions disagree in shape, contain non-finite pixels, or
+        yield a non-positive signal or difference variance.
+    """
+    regions = [
+        _central_region(np.asarray(a, dtype=np.float64), central_fraction)
+        for a in (flat_a, flat_b, bias_a, bias_b)
+    ]
+    shapes = {a.shape for a in regions}
+    if len(shapes) != 1:
+        raise ValueError(f"All four regions must have the same shape, got {sorted(shapes)}")
+    if any(not np.all(np.isfinite(a)) for a in regions):
+        raise ValueError("Input regions contain non-finite pixels")
+
+    region_a, region_b, region_bias_a, region_bias_b = regions
+    mean_a = float(np.mean(region_a))
+    mean_b = float(np.mean(region_b))
+    mean_bias_a = float(np.mean(region_bias_a))
+    mean_bias_b = float(np.mean(region_bias_b))
+    signal_adu = mean_a + mean_b - mean_bias_a - mean_bias_b
+    difference_variance_adu2 = float(np.var(region_a - region_b, ddof=1))
+    if signal_adu <= 0:
+        raise ValueError(f"Bias-subtracted flat signal must be positive, got {signal_adu:.3f} ADU")
+    if difference_variance_adu2 <= 0:
+        raise ValueError("Variance of flat_a - flat_b must be positive")
+
+    change_fraction = abs(mean_a - mean_b) / ((mean_a + mean_b) / 2)
+    return AnalysisResult(
+        name="conversion_gain_from_flat_pair",
+        scalar_summary={
+            "mean_flat_a_adu": mean_a,
+            "mean_flat_b_adu": mean_b,
+            "mean_bias_a_adu": mean_bias_a,
+            "mean_bias_b_adu": mean_bias_b,
+            "flat_pair_change_fraction": change_fraction,
+            "signal_sum_adu": signal_adu,
+            "difference_variance_adu2": difference_variance_adu2,
+            "conversion_gain_e_per_adu": signal_adu / difference_variance_adu2,
+        },
+        metadata={
+            "method": "janesick_single_point",
+            "central_fraction": central_fraction,
+            "region_shape": region_a.shape,
+            # A pair that drifted in illumination violates the equal-signal
+            # assumption; the estimate is still returned, flagged, because the
+            # operator is usually watching the sky fade while it prints.
+            "flat_pair_stable": bool(change_fraction <= 0.02),
+            "preliminary": True,
+        },
+    )
+
+
 def full_well_capacity(
     ptc_result: AnalysisResult,
     config: SensorConfig,

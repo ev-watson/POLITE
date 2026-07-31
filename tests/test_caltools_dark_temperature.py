@@ -75,3 +75,63 @@ def test_temperature_plot_uses_one_error_bar_per_temperature():
     assert ax.get_ylabel() == "Dark current (e-/pixel/s)"
     assert ax.get_yscale() == "linear"
     plt.close(fig)
+
+
+def _temperature_result(**scalars):
+    return AnalysisResult(
+        name="dark_current_vs_temperature",
+        scalar_summary=scalars,
+        metadata={
+            "temperatures_c": np.array([-14.0, -10.0, 0.0]),
+            "dark_rates_e_per_s": np.array([0.3, 0.5, 2.0]),
+            "dark_rate_errors_e_per_s": np.array([0.03, 0.05, 0.20]),
+        },
+    )
+
+
+def test_temperature_plot_survives_a_failed_arrhenius_fit():
+    """A non-converged fit must still produce the measured points, not raise."""
+    fig, ax = plt.subplots()
+    dark_current_vs_temperature_plot(ax, _temperature_result(arrhenius_fit_failed=1.0))
+
+    assert len(ax.containers) == 1  # the errorbar points survived
+    assert any("No Arrhenius fit" in t.get_text() for t in ax.texts)
+    plt.close(fig)
+
+
+def test_temperature_plot_skips_overlay_when_caller_disables_it():
+    """arrhenius_fit=False must not raise even when the coefficients exist."""
+    fig, ax = plt.subplots()
+    dark_current_vs_temperature_plot(
+        ax,
+        _temperature_result(
+            arrhenius_A=1e10,
+            arrhenius_Ea_eV=0.6,
+            arrhenius_A_err=1e9,
+            arrhenius_Ea_err_eV=0.05,
+        ),
+        arrhenius_fit=False,
+    )
+
+    assert len(ax.texts) == 0
+    labels = [line.get_label() for line in ax.lines]
+    assert not any("Arrhenius" in str(label) for label in labels)
+    plt.close(fig)
+
+
+def test_temperature_plot_draws_the_overlay_when_the_fit_converged():
+    fig, ax = plt.subplots()
+    dark_current_vs_temperature_plot(
+        ax,
+        _temperature_result(
+            arrhenius_A=1e10,
+            arrhenius_Ea_eV=0.6,
+            arrhenius_A_err=1e9,
+            arrhenius_Ea_err_eV=0.05,
+        ),
+    )
+
+    labels = [str(line.get_label()) for line in ax.lines]
+    assert any("Arrhenius fit" in label for label in labels)
+    assert len(ax.texts) == 0
+    plt.close(fig)

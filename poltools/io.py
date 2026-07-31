@@ -25,25 +25,26 @@ from alpyca_tools.fits_writer import (
 )
 from ._types import PolConfig
 
+# As-acquired polarimetry state only. Savart geometry/material, HWP retardance,
+# modulation efficiency and filter effective wavelength are deliberately absent —
+# they are spec constants, measurements, or reduction results rather than
+# properties of the frame. ``WPUNCERT`` stays because it is the uncertainty on
+# ``HWPANG`` in the same frame: the open-loop Optec rotator steps discretely and
+# does not land on a round angle. See
+# :class:`alpyca_tools.fits_writer.PolarimetryCards` for the reasoning, and the
+# per-session ``pol_config.yaml`` sidecar for beam geometry with its
+# measured-vs-nominal flag.
 POL_KEYWORDS = {
-    "HWPANG": "Half-wave-plate angle [deg]",
-    "RETARD": "Retarder retardance delta [deg]",
+    "HWPANG": "Commanded half-wave-plate angle [deg]",
+    "WPUNCERT": "HWPANG uncertainty, rotator step quant. [deg]",
     "INSTROT": "Field-rotator angle [deg]",
     "POLBEAM": "Beam(s) recorded (ordinary/extraordinary/dual)",
     "POLSEQ": "Polarimetry sequence identifier",
     "POLSEQN": "Index within polarimetry sequence",
-    "POLEFF": "Polarization (modulation) efficiency",
-    "PIXSCALE": "Plate scale [arcsec/pixel]",
+    "PIXSCALE": "Nominal plate scale seed [arcsec/pixel]",
     "READMODE": "Readout mode index",
     "SET-TEMP": "Cooler setpoint [C]",
-    "SAVMAT": "Savart-plate material",
-    "SAVTHK": "Savart-plate thickness [mm]",
-    "WAVELEN": "Filter effective wavelength [nm]",
-    "WPUNCERT": "HWP angle uncertainty [deg]",
 }
-
-SAVART_MATERIAL = "alpha-BBO"
-SAVART_THICKNESS_MM = 18.0
 
 
 def write_pol_fits(
@@ -57,7 +58,7 @@ def write_pol_fits(
     imagetyp: str = "LIGHT",
     seq_id: str = "SIM",
     seq_index: int = 0,
-    efficiency: float = 1.0,
+    hwp_uncert_deg: Optional[float] = None,
     date_obs: Optional[str] = None,
     extra: Optional[Dict[str, object]] = None,
 ) -> Path:
@@ -65,6 +66,10 @@ def write_pol_fits(
 
     Data are stored as ``uint16`` physical ADU with ``BZERO=32768`` using the
     same writer and header contract as live Alpaca acquisition.
+
+    ``hwp_uncert_deg`` mirrors the live runner's ``WPUNCERT``: pass the rotator's
+    step quantization when simulating frames for a specific instrument, otherwise
+    the card is omitted rather than invented.
     """
     out = Path(path).expanduser().resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -88,22 +93,14 @@ def write_pol_fits(
         ),
         polarimetry=PolarimetryCards(
             hwp_angle_deg=float(hwp_deg),
-            retardance_deg=float(cfg.retardance_deg),
+            hwp_uncert_deg=None if hwp_uncert_deg is None else float(hwp_uncert_deg),
             instrument_rotator_deg=float(cfg.instrument_rotator_deg),
             pol_beam="dual",
             pol_seq_id=str(seq_id),
             pol_seq_index=int(seq_index),
-            pol_efficiency=float(efficiency),
-            beam_sep_px=float(cfg.beam.separation_px),
-            beam_pa_deg=float(cfg.beam.position_angle_deg),
-            savart_material=SAVART_MATERIAL,
-            savart_thickness_mm=SAVART_THICKNESS_MM,
         ),
         extra_cards={"PIXSCALE": (float(cfg.plate_scale_arcsec), POL_KEYWORDS["PIXSCALE"])},
     )
-    _fcfg = cfg.active_filter()
-    if _fcfg is not None and _fcfg.eff_wavelength_nm is not None:
-        header_cfg.polarimetry.eff_wavelength_nm = float(_fcfg.eff_wavelength_nm)
 
     if extra:
         header_cfg.extra_cards.update(extra)

@@ -7,16 +7,16 @@
 # nothing after dark).
 #
 # >>> HOW TO RUN (one invocation per cooler setpoint) <<<
-#   scripts/run_calibration_night.py night_plans/20260717_darkcal.yaml                 # dry-run
-#   scripts/run_calibration_night.py night_plans/20260717_darkcal.yaml --run --setpoint 0
-#   scripts/run_calibration_night.py night_plans/20260717_darkcal.yaml --run --setpoint -10
-#   scripts/run_calibration_night.py night_plans/20260717_darkcal.yaml --run --setpoint -15
+#   scripts/execute_night.py night_plans/20260717_darkcal.yaml                 # dry-run
+#   scripts/execute_night.py night_plans/20260717_darkcal.yaml --run --setpoint 0
+#   scripts/execute_night.py night_plans/20260717_darkcal.yaml --run --setpoint -10
+#   scripts/execute_night.py night_plans/20260717_darkcal.yaml --run --setpoint -15
 # The runner: prints+logs every camera/EFW setting read BACK from hardware,
 # sets the cooler once, then waits read-only for it to stabilize (on timeout
 # you may continue at the achieved temperature -- per-frame CCD-TEMP is
 # authoritative for the fit), and writes each invocation into its own
 # FITSDATA/20260717/darkcal_T<setpoint>C_<HHMM>/ so temperature points never mix.
-# NEVER use plan_night.py --run (it homes the mount -> disconnects dead DEC).
+# plan_night.py is preview-only; execute_night.py never enables motors (safe on dead DEC).
 #
 # Deliverables (per Widenhorn et al. 2002 / EMVA 1288 dark characterization):
 #   - mean dark current vs exposure at each T (linear fit; 3 exposure points x5)

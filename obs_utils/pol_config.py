@@ -18,10 +18,12 @@ from .session_context import SessionCaptureContext
 
 
 def _ctx_to_detector(ctx: SessionCaptureContext) -> SessionDetectorConfig:
-    # Fall back to the manufacturer-nominal Savart separation (0.9 mm ≈ 239 px on
-    # the QHY268M), NOT an arbitrary placeholder, so an uncharacterized session
-    # still writes a physically anchored geometry. Derive from the actual pixel
-    # size when the context carries one.
+    # Beam geometry lives here, in the per-session sidecar, and deliberately NOT
+    # in the FITS header: it is measured from flats, and only the sidecar can say
+    # so via ``beam_geometry_characterized``. Fall back to the manufacturer-nominal
+    # separation (0.9 mm ≈ 239 px on the QHY268M), NOT an arbitrary placeholder, so
+    # an uncharacterized session still carries a physically anchored geometry with
+    # the flag ``False``. Derive from the actual pixel size when the context has one.
     pixel_um = getattr(ctx, "pixel_size_um", None) or 3.76
     beam_sep = nominal_beam_separation_px(pixel_um)
     beam_pa = 0.0
