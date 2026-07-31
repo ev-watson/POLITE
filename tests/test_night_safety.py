@@ -75,6 +75,24 @@ assert camera.setpoint_writes == 0
 ''')
 
 
+def test_cooler_gate_accepts_a_temperature_colder_than_setpoint():
+    """A colder detector is scientifically acceptable; do not wait to warm it."""
+    _run('''
+from obs_utils.night_safety import cooler_gate
+
+class Camera:
+    CanSetCCDTemperature = True
+    CCDTemperature = -14.0
+    CoolerPower = 0.0
+
+achieved = cooler_gate(
+    Camera(), -13.0, tol_c=0.5, stable_s=0.0,
+    timeout_s=1.0, poll_s=0.0, assume_yes=True,
+)
+assert achieved == -14.0
+''')
+
+
 # --------------------------------------------------------------------------- #
 # EFW name -> slot resolution
 # --------------------------------------------------------------------------- #

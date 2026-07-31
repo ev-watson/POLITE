@@ -499,7 +499,11 @@ def cooler_gate(
     assume_yes: bool = False,
     verbose: bool = True,
 ) -> float:
-    """Block until CCD temperature holds ``setpoint_c`` +/- ``tol_c``.
+    """Block until CCD temperature is no warmer than the requested tolerance.
+
+    A detector colder than ``setpoint_c`` is acceptable (and preferable for
+    thermal noise), so the pass criterion is ``CCDTemperature <= setpoint_c +
+    tol_c`` rather than a symmetric tolerance band.
 
     The setpoint was applied once by ``_apply_session_camera``.  The QHY SDK
     regulates cooler power internally; this function is read-only so polling
@@ -538,7 +542,9 @@ def cooler_gate(
         if verbose:
             print(message)
 
-        if abs(t - setpoint_c) <= tol_c:
+        # Do not wait for a colder camera to warm back up: lower temperature
+        # reduces dark current, and the per-frame DET-TEMP remains recorded.
+        if t <= setpoint_c + tol_c:
             if stable_since is None:
                 stable_since = time.monotonic()
                 if stable_s <= 0:
