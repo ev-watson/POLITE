@@ -488,8 +488,17 @@ def report_settings(imaging, ctx, *, skip_check: bool = False) -> None:
 # --------------------------------------------------------------------------- #
 # Cooler stabilization gate
 # --------------------------------------------------------------------------- #
-def cooler_gate(cam, setpoint_c: float, *, tol_c: float, stable_s: float,
-                timeout_s: float, poll_s: float, assume_yes: bool) -> float:
+def cooler_gate(
+    cam,
+    setpoint_c: float,
+    *,
+    tol_c: float,
+    stable_s: float,
+    timeout_s: float,
+    poll_s: float = 5.0,
+    assume_yes: bool = False,
+    verbose: bool = True,
+) -> float:
     """Block until CCD temperature holds ``setpoint_c`` +/- ``tol_c``.
 
     The setpoint was applied once by ``_apply_session_camera``.  The QHY SDK
@@ -501,11 +510,19 @@ def cooler_gate(cam, setpoint_c: float, *, tol_c: float, stable_s: float,
     differs from ``obs_utils.night_session.wait_for_cooler``.
     """
     if not _read(cam, "CanSetCCDTemperature"):
-        logger.warning("[cooler] camera reports CanSetCCDTemperature=False; skipping wait.")
+        message = "[cooler] camera reports CanSetCCDTemperature=False; skipping wait."
+        logger.warning(message)
+        if verbose:
+            print(message)
         return float("nan")
 
-    logger.info("[cooler] waiting for %+.1f C (tol %.2f C, hold %.0f s, timeout %.0f s)",
-                setpoint_c, tol_c, stable_s, timeout_s)
+    message = (
+        f"[cooler] waiting for {setpoint_c:+.1f} C "
+        f"(tol {tol_c:.2f} C, hold {stable_s:.0f} s, timeout {timeout_s:.0f} s)"
+    )
+    logger.info(message)
+    if verbose:
+        print(message)
     start = time.monotonic()
     stable_since = None
     while True:
@@ -513,30 +530,49 @@ def cooler_gate(cam, setpoint_c: float, *, tol_c: float, stable_s: float,
         p = _read(cam, "CoolerPower")
         t = float(t) if t is not None else float("nan")
         elapsed = time.monotonic() - start
-        logger.info("[cooler] T=%+6.2f C  target=%+.1f C  power=%s%%  elapsed=%4.0f s",
-                    t, setpoint_c, "n/a" if p is None else f"{float(p):.0f}", elapsed)
+        message = (
+            f"[cooler] T={t:+6.2f} C  target={setpoint_c:+.1f} C  "
+            f"power={'n/a' if p is None else f'{float(p):.0f}'}%  elapsed={elapsed:4.0f} s"
+        )
+        logger.info(message)
+        if verbose:
+            print(message)
 
         if abs(t - setpoint_c) <= tol_c:
             if stable_since is None:
                 stable_since = time.monotonic()
                 if stable_s <= 0:
-                    logger.info("[cooler] IN TOLERANCE at %+.2f C", t)
+                    message = f"[cooler] IN TOLERANCE at {t:+.2f} C"
+                    logger.info(message)
+                    if verbose:
+                        print(message)
                     return t
             elif time.monotonic() - stable_since >= stable_s:
-                logger.info("[cooler] STABLE at %+.2f C (power %s%%) after %.0f s",
-                            t, "n/a" if p is None else f"{float(p):.0f}", elapsed)
+                message = (
+                    f"[cooler] STABLE at {t:+.2f} C "
+                    f"(power {'n/a' if p is None else f'{float(p):.0f}'}%) after {elapsed:.0f} s"
+                )
+                logger.info(message)
+                if verbose:
+                    print(message)
                 return t
         else:
             stable_since = None
 
         if elapsed > timeout_s:
-            logger.warning(
+            message = (
                 "[cooler] TIMEOUT: achieved %+.2f C (target %+.1f C, power %s%%). "
                 "Per-frame DET-TEMP is recorded, so data taken at the achieved "
-                "temperature is still usable for the dark-vs-T fit.",
-                t, setpoint_c, "n/a" if p is None else f"{float(p):.0f}")
+                "temperature is still usable for the dark-vs-T fit."
+            ) % (t, setpoint_c, "n/a" if p is None else f"{float(p):.0f}")
+            logger.warning(message)
+            if verbose:
+                print(message)
             if assume_yes:
-                logger.warning("[cooler] assume-yes set: continuing at achieved temperature.")
+                message = "[cooler] assume-yes set: continuing at achieved temperature."
+                logger.warning(message)
+                if verbose:
+                    print(message)
                 return t
             ans = input("Continue at achieved temperature? [y/N] ").strip().lower()
             if ans in ("y", "yes"):
