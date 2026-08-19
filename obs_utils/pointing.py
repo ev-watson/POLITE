@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
@@ -8,7 +7,7 @@ from typing import Callable, Optional
 from alpyca_tools.fits_writer import FitsHeaderConfig
 
 from .imaging import CaptureRequest, ImagingSession, capture_fits_file, select_filter
-from .platesolve import PlateSolveConfig, platesolve
+from .platesolve import PlateSolveConfig
 from .pwi4_client import PWI4
 
 
@@ -19,8 +18,10 @@ ImageCaptureFn = Callable[[Path], None]
 class ModelBuildConfig:
     image_arcsec_per_pixel: float
     num_alt: int = 3
-    min_alt: float = 20.0
-    max_alt: float = 80.0
+    # PWI4 calls this field altitude, but POLITE uses 0 deg=zenith and
+    # 90 deg=horizon. Keep model points inside the shed-safe 3--42 deg window.
+    min_alt: float = 3.0
+    max_alt: float = 42.0
     num_az: int = 6
     min_az: float = 5.0
     max_az: float = 355.0
@@ -77,29 +78,12 @@ def map_point(
     image_path: Path,
     poll_s: float = 0.2,
 ) -> None:
-    pwi4.mount_goto_alt_az(alt_deg, az_deg)
-    while pwi4.status().mount.is_slewing:
-        time.sleep(poll_s)
-
-    status = pwi4.status()
-    azm_error = abs(status.mount.azimuth_degs - az_deg)
-    alt_error = abs(status.mount.altitude_degs - alt_deg)
-    if azm_error > 0.1 or alt_error > 0.1:
-        raise RuntimeError(
-            "Mount stopped too far from target: "
-            f"az={status.mount.azimuth_degs:.4f}, alt={status.mount.altitude_degs:.4f}"
-        )
-
-    pwi4.mount_tracking_on()
-    take_image_fn(image_path)
-
-    result = platesolve(
-        image_file=image_path,
-        arcsec_per_pixel=arcsec_per_pixel,
-        config=platesolve_cfg,
+    raise RuntimeError(
+        "Automatic pointing-model construction is disabled until a real POLITE "
+        "PS3CLI result confirms its coordinate field names and units. Use the "
+        "read-only obs_utils.platesolve.platesolve commissioning path first; "
+        "this function will not slew, capture, or edit PWI4's model."
     )
-
-    pwi4.mount_model_add_point(result["ra_j2000_hours"], result["dec_j2000_degrees"])
 
 
 def build_pointing_model(
@@ -109,29 +93,7 @@ def build_pointing_model(
     session: Optional[ImagingSession] = None,
     take_image_fn: Optional[ImageCaptureFn] = None,
 ) -> None:
-    config.image_path.parent.mkdir(parents=True, exist_ok=True)
-    points = create_point_list(
-        config.num_alt,
-        config.min_alt,
-        config.max_alt,
-        config.num_az,
-        config.min_az,
-        config.max_az,
+    raise RuntimeError(
+        "Automatic pointing-model construction is disabled pending PlateSolve3 "
+        "commissioning. This function will not create a model, slew, or capture."
     )
-
-    if take_image_fn is None:
-        if session is None:
-            raise ValueError("session is required when take_image_fn is not provided")
-        take_image_fn = lambda path: take_image_pointing(session, path)
-
-    for alt, azm in points:
-        map_point(
-            pwi4,
-            alt,
-            azm,
-            take_image_fn,
-            platesolve_cfg,
-            arcsec_per_pixel=config.image_arcsec_per_pixel,
-            image_path=config.image_path,
-            poll_s=config.poll_s,
-        )

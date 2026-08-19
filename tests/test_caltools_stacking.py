@@ -42,6 +42,20 @@ def test_master_bias_rejects_unknown_reducer(tmp_path):
         ct.master_bias([path], method="mode")
 
 
+def test_subtract_bias_and_dark_returns_float_copy_and_validates_alignment():
+    data = np.array([[100, 110], [120, 130]], dtype=np.uint16)
+    bias = np.full((2, 2), 10.0, dtype=np.float32)
+    dark = np.full((2, 2), 2.5, dtype=np.float32)
+
+    corrected = ct.subtract_bias_and_dark(data, bias, dark)
+
+    np.testing.assert_allclose(corrected, [[87.5, 97.5], [107.5, 117.5]])
+    assert np.issubdtype(corrected.dtype, np.floating)
+    np.testing.assert_array_equal(data, [[100, 110], [120, 130]])
+    with pytest.raises(ValueError, match="master_bias shape"):
+        ct.subtract_bias_and_dark(data, bias[:, :1], dark)
+
+
 def test_master_flat_rejects_zero_signal(tmp_path):
     bias = np.full((4, 4), 500.0, dtype=np.float32)
     paths = [

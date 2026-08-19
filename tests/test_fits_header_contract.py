@@ -20,6 +20,8 @@ class _FakeCamera:
     Offset = 30
     CCDTemperature = -9.8
     SensorName = "QHY268M"
+    StartX = 24
+    StartY = 0
 
 
 def test_fits_writer_detector_cards():
@@ -39,6 +41,8 @@ def test_fits_writer_detector_cards():
     assert hdr["READMODE"] == 0
     assert hdr["SET-TEMP"] == -10.0
     assert hdr["XPIXSZ"] == 3.76
+    assert hdr["XORGSUBF"] == 24
+    assert hdr["YORGSUBF"] == 0
     # Actual detector temperature uses the generic (non-CCD) keyword.
     assert hdr["DET-TEMP"] == -9.8
     assert "CCD-TEMP" not in hdr

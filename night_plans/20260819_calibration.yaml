@@ -1,0 +1,55 @@
+# Wednesday 2026-08-19 — optional panel calibration block.
+#
+# This is deliberately independent of 20260819_ip_snr.yaml. Run it either
+# before dark (preferred) OR after the IP/S/N sequence, never both. The matching
+# detector state is fixed here: Mode 5, gain 56, offset 20, target -10 C.
+#
+# PANEL EXPOSURE: 1.0 s is a starting value only. Before --run, use a one-frame
+# panel check to choose a stable, unsaturated level, then edit BOTH panelFlatV
+# and no other science setting. If the check clips, do not run this plan.
+#
+# The panel must illuminate the entire optical train and be effectively
+# unpolarized. Ten flats at every science HWP angle preserve the option of an
+# angle-matched LSQ reduction; HD 154892 is the night-level flat validation.
+#
+# Preview: scripts/execute_night.py night_plans/20260819_calibration.yaml
+# Run before dark: scripts/execute_night.py night_plans/20260819_calibration.yaml --run --subdir cal_before
+# Run after science: scripts/execute_night.py night_plans/20260819_calibration.yaml --run --subdir cal_after
+
+uses: palette.yaml
+session: "20260819"
+observer: "POLITE"
+telescope: "CDK20"
+observatory: "Julian, CA"
+base_data_dir: FITSDATA
+naming: polite
+calibrate_stage: before
+
+camera:
+  readout_mode: 5
+  readout_mode_name: "Mode 5"
+  gain: 56
+  offset: 20
+  cooler_setpoint_c: -10.0
+  cooler_policy: at_or_below
+
+bricks:
+  panelFlatV:
+    type: pol_flat
+    filter: "Photometric V"
+    angles: 8
+    exp: 1.0
+    n: 10
+    imagetyp: FLAT
+    object_name: PanelFlat
+    pol_seq_id: "panelFlatV_20260819"
+  bias20: {type: cal, frame: BIAS, exp: 0, n: 20, filter: Dark}
+  dark_ip_snr:
+    type: cal
+    frame: DARK
+    exp: 30
+    n: 10
+    filter: Dark
+
+plan:
+  - cal: [panelFlatV, bias20, dark_ip_snr]

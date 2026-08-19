@@ -22,7 +22,12 @@ from .block_log import (
 )
 from .horizons import cache_ephemeris, fetch_ephemeris, resolve_target_id
 from .imaging import CaptureRequest, capture_fits_file, select_filter, select_hwp_angle
-from .mount import slew_altaz, slew_radec_j2000, wait_for_slew
+from .mount import (
+    slew_altaz,
+    slew_radec_j2000,
+    verify_pwi4_zenith_distance,
+    wait_for_slew,
+)
 from .night_display import NightReporter, estimated_duration_s, total_frame_count
 from .pol_config import polconfig_snapshot, write_pol_config_sidecar
 from .qa_gates import QAGate, dispatch_qa_gate, gates_after_cal, gates_after_target
@@ -249,7 +254,12 @@ class _PointingFields:
 
 def _auto_pointing_fields(pwi4) -> _PointingFields:
     """Snapshot mount pointing into sexagesimal + numeric FITS pointing fields."""
-    from .obs_math import airmass_kasten_young, deg_to_dms, hours_to_hms
+    from .obs_math import (
+        airmass_kasten_young,
+        deg_to_dms,
+        hours_to_hms,
+        zenith_distance_to_altitude,
+    )
 
     fields = _PointingFields()
     try:
@@ -267,7 +277,10 @@ def _auto_pointing_fields(pwi4) -> _PointingFields:
         fields.dec_deg = float(dec_d)
         fields.dec_sex = deg_to_dms(dec_d)
 
-    fields.alt_deg = getattr(mount, "altitude_degs", None)
+    # PWI4's field called ``altitude_degs`` is a zenith distance for this
+    # installation (0=zenith, 90=horizon). FITS ALTITUDE and AIRMASS use the
+    # conventional altitude above the horizon.
+    fields.alt_deg = zenith_distance_to_altitude(getattr(mount, "altitude_degs", None))
     fields.az_deg = getattr(mount, "azimuth_degs", None)
     fields.airmass = airmass_kasten_young(fields.alt_deg)
 
@@ -674,8 +687,15 @@ def _slew_to_target(pwi4, target: TargetPlan, limits) -> None:
     else:
         return
     wait_for_slew(pwi4)
+    verify_pwi4_zenith_distance(pwi4, limits)
     if target.track:
         pwi4.mount_tracking_on()
+        tracking = getattr(pwi4.status().mount, "is_tracking", None)
+        if not bool(tracking):
+            raise RuntimeError(
+                f"PWI4 did not report sidereal tracking enabled for {target.name}; "
+                "no frames were captured."
+            )
     else:
         try:
             pwi4.mount_tracking_off()

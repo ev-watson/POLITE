@@ -398,7 +398,7 @@ def verify_mount(
     logger.info("[mount] slewing          : %s", _read(mount, "is_slewing"))
     logger.info("[mount] RA/Dec J2000     : %s h, %s deg",
                 _read(mount, "ra_j2000_hours"), _read(mount, "dec_j2000_degs"))
-    logger.info("[mount] alt/az           : %s deg, %s deg",
+    logger.info("[mount] PWI4 zenith-dist/Az: %s deg, %s deg",
                 _read(mount, "altitude_degs"), _read(mount, "azimuth_degs"))
     logger.info("[mount] plan targets     : %s", list(targets) or "(none)")
     if not down:

@@ -61,12 +61,20 @@ from .pol_config import (
     write_pol_config_sidecar,
 )
 from .photometry import (
+    AnchorPairProposal,
     aperture_peaks,
+    brightest_point_source,
     detect_sources,
     measure_fluxes,
     measure_pair,
     pair_oe,
     photometer_sequence,
+    propose_anchor_pair,
+    select_trackable_pair,
+    show_tracked_sequence,
+    track_pair_sequence,
+    track_matched_pair,
+    TrackedPairFrame,
 )
 from .modulation import (
     double_difference,
@@ -105,6 +113,9 @@ __all__ = [
     "group_pol_sequence", "load_pol_config_sidecar", "write_pol_config_sidecar",
     "SessionDetectorConfig", "polconfig_from_detector", "polconfig_from_fits_headers",
     "polconfig_snapshot",
+    "AnchorPairProposal", "brightest_point_source", "propose_anchor_pair",
+    "TrackedPairFrame", "track_matched_pair", "select_trackable_pair",
+    "track_pair_sequence", "show_tracked_sequence",
     "detect_sources", "pair_oe", "measure_fluxes", "measure_pair",
     "photometer_sequence", "aperture_peaks",
     "ratio_r", "double_ratio", "double_difference", "lsq_modulation",

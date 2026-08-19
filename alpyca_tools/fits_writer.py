@@ -197,6 +197,12 @@ def build_header(
 
     _set_card(hdr, "XBINNING", int(getattr(camera, "BinX", cfg.binx)), "Binning factor in X")
     _set_card(hdr, "YBINNING", int(getattr(camera, "BinY", cfg.biny)), "Binning factor in Y")
+    if camera is not None:
+        try:
+            _set_card(hdr, "XORGSUBF", int(camera.StartX), "ROI origin X [camera pixels]")
+            _set_card(hdr, "YORGSUBF", int(camera.StartY), "ROI origin Y [camera pixels]")
+        except Exception:
+            pass
 
     _set_card(hdr, "IMAGETYP", cfg.imagetyp.upper(), "Image type (LIGHT/DARK/BIAS/FLAT)")
     _set_card(hdr, "OBSTYPE", cfg.imagetyp.upper(), "Image type")

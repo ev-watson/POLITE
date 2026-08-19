@@ -27,6 +27,49 @@ def _require_paths(paths: List[str]) -> None:
         raise ValueError("paths must contain at least one FITS frame")
 
 
+def subtract_bias_and_dark(
+    data: Frame,
+    master_bias: Frame,
+    bias_subtracted_master_dark: Frame,
+) -> Frame:
+    """Return a bias- and dark-subtracted copy of one camera frame.
+
+    ``bias_subtracted_master_dark`` must be the output of :func:`master_dark`
+    (or an equivalent product), so it contains dark signal only.  Supplying a
+    raw dark that still contains the bias pedestal would subtract the bias
+    twice and is deliberately not hidden by this helper.
+
+    All three arrays must already be aligned to the same 2-D detector region.
+    Loading FITS files, selecting an ROI, scaling a dark exposure, applying a
+    flat, and handling bad-pixel flags belong to the caller.
+    """
+    arrays = {
+        "data": np.asarray(data),
+        "master_bias": np.asarray(master_bias),
+        "bias_subtracted_master_dark": np.asarray(bias_subtracted_master_dark),
+    }
+    shape = arrays["data"].shape
+    if arrays["data"].ndim != 2:
+        raise ValueError("data must be a 2-D frame")
+    for name, array in arrays.items():
+        if array.ndim != 2:
+            raise ValueError(f"{name} must be a 2-D frame")
+        if array.shape != shape:
+            raise ValueError(f"{name} shape {array.shape} != data shape {shape}")
+
+    dtype = np.result_type(
+        arrays["data"].dtype,
+        arrays["master_bias"].dtype,
+        arrays["bias_subtracted_master_dark"].dtype,
+        np.float32,
+    )
+    return (
+        arrays["data"].astype(dtype, copy=False)
+        - arrays["master_bias"].astype(dtype, copy=False)
+        - arrays["bias_subtracted_master_dark"].astype(dtype, copy=False)
+    )
+
+
 def master_bias(
     paths: List[str],
     method: str = "median",

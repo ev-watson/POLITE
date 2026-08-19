@@ -1,0 +1,36 @@
+# Wednesday 2026-08-19 — one V-panel exposure at each minimum HWP angle.
+#
+# Run this only to choose panelFlatV.exp in 20260819_calibration.yaml. It is a
+# real raw calibration frame, not a dry simulation. Inspect the saved frame for
+# clipping and illumination stability before editing the full calibration plan.
+
+uses: palette.yaml
+session: "20260819"
+observer: "POLITE"
+telescope: "CDK20"
+observatory: "Julian, CA"
+base_data_dir: FITSDATA
+naming: polite
+calibrate_stage: before
+
+camera:
+  readout_mode: 5
+  readout_mode_name: "Mode 5"
+  gain: 56
+  offset: 20
+  cooler_setpoint_c: -10.0
+  cooler_policy: at_or_below
+
+bricks:
+  panelProbeV:
+    type: pol_flat
+    filter: "Photometric V"
+    angles: [0.0, 22.5, 45.0, 67.5]
+    exp: 1.0
+    n: 1
+    imagetyp: FLAT
+    object_name: PanelFlatProbe
+    pol_seq_id: "panelFlatProbeV_20260819"
+
+plan:
+  - cal: [panelProbeV]

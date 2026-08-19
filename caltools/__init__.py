@@ -20,7 +20,7 @@ from .io import (
     sensor_config_from_header,
 )
 
-from .stacking import master_bias, master_dark, master_flat
+from .stacking import master_bias, master_dark, master_flat, subtract_bias_and_dark
 
 from .stats import (
     WelfordVariance,
@@ -88,6 +88,7 @@ __all__ = [
     "master_bias",
     "master_dark",
     "master_flat",
+    "subtract_bias_and_dark",
     "WelfordVariance",
     "gaussianity_tests",
     "mad_sigma",

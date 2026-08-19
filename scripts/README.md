@@ -48,6 +48,13 @@ that will not energize, and `obs_utils.mount.enable_motors`' unbounded `while
 True` poll is bypassed so a dead drive aborts in under a minute instead of
 hanging until dawn.
 
+**PWI4 coordinate warning.** At this site PWI4's `altitude_degs` coordinate is
+zenith distance: **0° is zenith and 90° is the horizon**. The shed-safe window
+is PWI4 3°–42°, not conventional altitude 42°–90°. Direct Alt/Az plans use that
+PWI4 coordinate, and every completed slew (including a J2000 slew) is read back
+and rejected before capture if it lies outside the window. FITS `ALTITUDE` and
+`AIRMASS` are converted to conventional altitude (`90° − PWI4 value`).
+
 **Detector settings.** The default operating point is **Mode 5, gain 56, offset
 20** (QHY's lowest-read-noise QHY268M mode at the lowest gain reaching that floor,
 chosen to preserve dynamic range — a first-order polarimetric constraint; **Mode 3,

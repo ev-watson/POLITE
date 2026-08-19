@@ -72,6 +72,13 @@ class AlpacaConfig:
 
 @dataclass
 class SkyRegionLimit:
+    """Allowed PWI4 horizontal-coordinate rectangle.
+
+    ``alt_*_deg`` deliberately retains its established API name, but its value
+    is the PWI4 mount coordinate: zenith distance (0 deg = zenith, 90 deg =
+    horizon), *not* conventional astronomical altitude.
+    """
+
     name: str
     alt_min_deg: float
     alt_max_deg: float
@@ -83,16 +90,21 @@ class SkyRegionLimit:
 class SlewLimits:
     max_slew_rate_deg_s: Optional[float] = 5.0
     enforce_rate: bool = False
-    regions: List[SkyRegionLimit] = field(default_factory=list)
+    regions: List[SkyRegionLimit] = field(default_factory=lambda: default_sky_regions())
     enforce_regions: bool = True
 
 
 def default_sky_regions() -> List[SkyRegionLimit]:
+    """POLITE's usable PWI4 zenith-distance window.
+
+    The observatory shed blocks PWI4 coordinates above 42 deg (closer to the
+    horizon), while operating closer than 3 deg to the zenith is avoided.
+    """
     return [
         SkyRegionLimit(
-            name="placeholder_sky_box",
-            alt_min_deg=15.0,
-            alt_max_deg=85.0,
+            name="pwi4_zenith_distance_3_to_42_deg",
+            alt_min_deg=3.0,
+            alt_max_deg=42.0,
             az_min_deg=0.0,
             az_max_deg=360.0,
         )

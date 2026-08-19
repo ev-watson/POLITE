@@ -1,0 +1,46 @@
+# Wednesday 2026-08-19 — abbreviated repaired-mount IP + S/N measurement.
+#
+# The low-polarization standard HD 154892 is deliberately both the instrumental
+# polarization target and the repeated S/N target. This avoids optional targets,
+# PA/efficiency standards, field rotations, and a long science program.
+#
+# PWI4 SAFETY CONVENTION: its displayed/API "altitude" is zenith distance:
+# 0 deg=zenith, 90 deg=horizon. The runner will refuse to capture unless its
+# post-slew PWI4 value is within 3--42 deg (the shed-safe window).
+#
+# The 30-s exposure comes from the prior first-light plan. Inspect its first
+# completed sequence for clipping; if it clips, stop and revise this plan's
+# science and matching-dark exposure before taking another complete sequence.
+#
+# Preview: scripts/execute_night.py night_plans/20260819_ip_snr.yaml
+# Run:     scripts/execute_night.py night_plans/20260819_ip_snr.yaml --run --subdir ip_snr
+
+uses: palette.yaml
+session: "20260819"
+observer: "POLITE"
+telescope: "CDK20"
+observatory: "Julian, CA"
+base_data_dir: FITSDATA
+naming: polite
+calibrate_stage: after
+
+camera:
+  readout_mode: 5
+  readout_mode_name: "Mode 5"
+  gain: 56
+  offset: 20
+  cooler_setpoint_c: -10.0
+  cooler_policy: at_or_below
+
+bricks:
+  ip_snr_V8:
+    type: pol_seq
+    filter: "Photometric V"
+    angles: 8
+    exp: 30
+    n: 2
+    pol_seq_id: "HD154892_IP_SNR_V8_20260819"
+
+plan:
+  - {target: "HD 154892", ra: 17.12817, dec: 15.21056, track: true,
+     lay: [ip_snr_V8]}  # low-polarization standard; normal sidereal tracking

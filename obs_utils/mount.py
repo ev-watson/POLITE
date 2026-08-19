@@ -160,10 +160,44 @@ def slew_altaz(
     az_deg: float,
     limits: Optional[SlewLimits] = None,
 ) -> None:
+    """Slew with PWI4's horizontal-coordinate convention.
+
+    ``alt_deg`` is PWI4's zenith distance: 0 deg is zenith and 90 deg is the
+    horizon. It is not conventional altitude above the horizon. Region limits
+    therefore protect the site's allowed PWI4 range (currently 3--42 deg).
+    """
     if limits and limits.enforce_regions and limits.regions:
         if not _altaz_allowed(alt_deg, az_deg, limits.regions):
-            raise ValueError(f"Target Alt/Az {alt_deg:.2f}, {az_deg:.2f} outside allowed regions")
+            raise ValueError(
+                f"Target PWI4 zenith-distance/Az {alt_deg:.2f}, {az_deg:.2f} "
+                "outside allowed regions"
+            )
     pwi4.mount_goto_alt_az(alt_deg, az_deg)
+
+
+def verify_pwi4_zenith_distance(pwi4: PWI4, limits: Optional[SlewLimits]) -> None:
+    """Fail closed if PWI4 reports a final position outside the allowed window.
+
+    Direct Alt/Az slews are checked before motion; J2000 slews can only be
+    checked once PWI4 has completed the coordinate conversion. This read-back
+    makes both paths enforce the same shed/zenith restriction before a frame is
+    captured.
+    """
+    if not limits or not limits.enforce_regions or not limits.regions:
+        return
+    status = pwi4.status()
+    z = getattr(status.mount, "altitude_degs", None)
+    az = getattr(status.mount, "azimuth_degs", None)
+    if z is None or az is None:
+        raise RuntimeError(
+            "PWI4 did not report zenith distance and azimuth after slew; "
+            "cannot verify the 3--42 deg observing window."
+        )
+    if not _altaz_allowed(float(z), float(az), limits.regions):
+        raise RuntimeError(
+            f"PWI4 reports zenith distance/Az {float(z):.2f}, {float(az):.2f} "
+            "outside the allowed observing region; no frames were captured."
+        )
 
 
 def slew_radec_j2000(
@@ -173,5 +207,7 @@ def slew_radec_j2000(
     limits: Optional[SlewLimits] = None,
 ) -> None:
     if limits and limits.enforce_regions and limits.regions:
-        logger.warning("Sky region limits are defined in Alt/Az; RA/Dec checks are not implemented")
+        logger.info(
+            "PWI4 zenith-distance limits will be verified from status after the J2000 slew"
+        )
     pwi4.mount_goto_ra_dec_j2000(ra_hours, dec_deg)

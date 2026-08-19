@@ -11,6 +11,7 @@ from typing import Optional, Tuple
 
 __all__ = [
     "airmass_kasten_young",
+    "zenith_distance_to_altitude",
     "obsgeo_xyz",
     "hours_to_hms",
     "deg_to_dms",
@@ -40,6 +41,23 @@ def airmass_kasten_young(altitude_deg: Optional[float]) -> Optional[float]:
     if denom <= 0.0:
         return None
     return 1.0 / denom
+
+
+def zenith_distance_to_altitude(zenith_distance_deg: Optional[float]) -> Optional[float]:
+    """Convert zenith distance to conventional apparent altitude.
+
+    POLITE's PWI4 display/API uses ``0 deg = zenith`` and ``90 deg = horizon``
+    for the field it calls ``altitude_degs``.  FITS ``ALTITUDE`` and airmass,
+    by contrast, use the conventional astronomical altitude above the horizon.
+    Keep this conversion explicit at the device boundary rather than letting a
+    PWI4 coordinate leak into physical metadata.
+    """
+    if zenith_distance_deg is None:
+        return None
+    z = float(zenith_distance_deg)
+    if not 0.0 <= z <= 90.0:
+        return None
+    return 90.0 - z
 
 
 def obsgeo_xyz(
