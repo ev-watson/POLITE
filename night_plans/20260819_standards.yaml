@@ -1,0 +1,97 @@
+# Wednesday 2026-08-19 — abbreviated repaired-mount standard-star ensemble.
+#
+# Three independent low-polarization standards constrain the instrumental q/u
+# offset; three polarized standards check response amplitude and position angle.
+# Each target has one complete V-band modulation cycle (8 HWP angles, two frames
+# per angle).  This is the minimum six-star sample for tonight, not a final
+# calibration: judge it from the star-to-star scatter in the reduction.
+#
+# Target order is deliberately time critical for Julian on this date. HD 154445
+# is setting; HD 161056 becomes unsafe later; BD+32 3739 will approach zenith.
+# Do not insert unrelated targets.
+#
+# PWI4 SAFETY CONVENTION: its displayed/API "altitude" is zenith distance:
+# 0 deg=zenith, 90 deg=horizon. The runner will refuse to capture unless its
+# post-slew PWI4 value is within 3--42 deg (the shed-safe window).
+#
+# The 30-s exposure is carried forward for the faint/medium standards. HD 154445
+# retains its 3-s first-light exposure. If any first frame clips, stop and revise
+# that target's brick and its matching dark before taking a replacement cycle.
+#
+# Preview: scripts/execute_night.py night_plans/20260819_standards.yaml
+# Run:     scripts/execute_night.py night_plans/20260819_standards.yaml --run --subdir standards
+
+uses: palette.yaml
+session: "20260819"
+observer: "POLITE"
+telescope: "CDK20"
+observatory: "Julian, CA"
+base_data_dir: FITSDATA
+naming: polite
+calibrate_stage: after
+
+camera:
+  readout_mode: 5
+  readout_mode_name: "Mode 5"
+  gain: 56
+  offset: 20
+  cooler_setpoint_c: -10.0
+  cooler_policy: at_or_below
+
+bricks:
+  HD154445_polV8_3s:
+    type: pol_seq
+    filter: "Photometric V"
+    angles: 8
+    exp: 3
+    n: 2
+    pol_seq_id: "HD154445_polV8_20260819"
+  BD323739_lowpolV8_30s:
+    type: pol_seq
+    filter: "Photometric V"
+    angles: 8
+    exp: 30
+    n: 2
+    pol_seq_id: "BD323739_lowpolV8_20260819"
+  HD154892_lowpolV8_30s:
+    type: pol_seq
+    filter: "Photometric V"
+    angles: 8
+    exp: 30
+    n: 2
+    pol_seq_id: "HD154892_lowpolV8_20260819"
+  HD154345_lowpolV8_30s:
+    type: pol_seq
+    filter: "Photometric V"
+    angles: 8
+    exp: 30
+    n: 2
+    pol_seq_id: "HD154345_lowpolV8_20260819"
+  HD183143_polV8_30s:
+    type: pol_seq
+    filter: "Photometric V"
+    angles: 8
+    exp: 30
+    n: 2
+    pol_seq_id: "HD183143_polV8_20260819"
+  HD161056_polV8_30s:
+    type: pol_seq
+    filter: "Photometric V"
+    angles: 8
+    exp: 30
+    n: 2
+    pol_seq_id: "HD161056_polV8_20260819"
+
+plan:
+  - {target: "HD 154445", ra: 17.09228, dec: -0.89222, track: true,
+     lay: [HD154445_polV8_3s]}       # polarized; setting, observe first
+  - {target: "HD 161056", ra: 17.72972, dec: -7.07944, track: true,
+     lay: [HD161056_polV8_30s]}      # polarized; observe before it sets
+  - {target: "BD+32 3739", ra: 20.20058, dec: 32.79556, track: true,
+     lay: [BD323739_lowpolV8_30s]}   # low polarization; before zenith
+  - {target: "HD 154892", ra: 17.12817, dec: 15.21056, track: true,
+     lay: [HD154892_lowpolV8_30s]}   # low polarization
+  - {target: "HD 154345", ra: 17.0434455, dec: 47.081879, track: true,
+     lay: [HD154345_lowpolV8_30s]}   # low polarization; SIMBAD J2000
+  - {target: "HD 183143", ra: 19.4573788, dec: 18.295887, track: true,
+     lay: [HD183143_polV8_30s]}      # polarized; SIMBAD J2000
