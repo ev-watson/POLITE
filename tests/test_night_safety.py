@@ -378,8 +378,8 @@ def test_verify_mount_skips_homing_when_asked():
     assert "home" not in pwi4.commands
 
 
-def test_dead_dec_axis_aborts_and_is_named():
-    """The known POLITE fault: axis1 never energizes. Must abort, not hang."""
+def test_down_axis_aborts_and_is_named():
+    """An axis that never energizes must abort and be named, not hang."""
     pwi4 = _FakeMount(axes=(True, False), enables_ok=False)
     with pytest.raises(SystemExit) as excinfo:
         verify_mount(pwi4, ["M42"], enable_timeout_s=0.0)

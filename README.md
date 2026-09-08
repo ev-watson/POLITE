@@ -123,13 +123,10 @@ auto`, the default), and `--mount off` is likewise refused on such a plan unless
 that the telescope was never aimed at the object. Cal-only plans touch neither.
 Shared safety gates live in `obs_utils/night_safety.py`.
 
-> **Mount status.** POLITE's DEC drive (PWI4 axis 1) does not currently engage.
-> The pointing path above is complete and wired but has not been exercised
-> against a working mount — treat its first pointed night as commissioning.
-> Nothing is special-cased to the fault: `night_safety.verify_mount` energizes
-> both axes *with a deadline* and refuses to slew one that will not come up,
-> naming axis1 when that is the one that failed. When the drive is repaired the
-> same gate passes and pointed science runs with no code change.
+> **Mount status.** The pointing path above is complete, wired, and gated.
+> Nothing is special-cased to any particular fault: `night_safety.verify_mount`
+> energizes both axes *with a deadline* and refuses to slew one that will not
+> come up, naming the axis that failed rather than hanging on it.
 
 While a plan runs, watch it from a control notebook. Copy a template from
 `notebooks/templates/` and point `SESSION_DIR` at the night's directory:

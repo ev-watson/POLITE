@@ -1,15 +1,14 @@
 # Next-session prompts
 
-## TOP PROMPT — Run the night of 2026-09-07 (first pointed night after the DEC repair)
+## TOP PROMPT — Run the night of 2026-09-07 (POLITE's first pointed night)
 
-**Context:** The DEC drive (PWI4 axis 1) is being repaired on 2026-09-07. Assuming
-it works, this is POLITE's first pointed night: the first pointed twilight flat and
-the first star through the CDK20 + HWP + Savart train. The even-illumination panel
-is **not installed**, so the 2026-08-19 panel plans do not run; twilight is the only
+**Context:** POLITE's first pointed night: the first pointed twilight flat and the
+first star through the CDK20 + HWP + Savart train. The even-illumination panel is
+**not installed**, so the 2026-08-19 panel plans do not run; twilight is the only
 flat source. The reduction pipeline is validated; pipeline tweaks are out of scope.
 
 **What to do:** follow `night_plans/20260907_night_sheet.md` — it holds the full
-timeline, the exact commands, the sky table and the mount-failure fallback. In brief:
+timeline, the exact commands and the sky table. In brief:
 
 1. 18:00 pre-cool to −10 °C and home the mount **once** by hand (every plan runs
    `--no-mount-home`). 18:30 dry-run all four plans on the observatory PC

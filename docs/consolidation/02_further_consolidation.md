@@ -95,7 +95,8 @@ are in use today. Only one is.
 
 **3. ~~The unbounded mount enable~~ — FIXED IN TREE 2026-07-30, during this review.**
 When I surveyed, `mount.enable_motors` looped `while True:` with no timeout and
-`startup.py` called it, so the all-night hang on the dead DEC drive was still reachable.
+`startup.py` called it, so an all-night hang on an axis that never energizes was still
+reachable.
 That has since been fixed independently: `obs_utils/waits.py` is new, and
 `mount.connect_mount`, `enable_motors`, `home_mount`, and `wait_for_slew` now all take
 deadlines (`mount.py:19-22`, `CONNECT_TIMEOUT_S=30`, `ENABLE_TIMEOUT_S=60`,
@@ -170,8 +171,8 @@ test.
 
 This is different from C0a. `run_night_session` was replaced; these two were never
 wired up in the first place, and a pointing model is exactly what the observatory needs
-once the DEC drive is fixed. `CLEANUP.md` §3 records the decision to ship the pointing
-path now rather than wait for the repair, so deleting these would undo that decision by
+for pointed science. `CLEANUP.md` §3 records the decision to ship the pointing path
+ahead of its first pointed night, so deleting these would undo that decision by
 accident.
 
 **Recommendation: keep them, but say so in the code.** One line in each module

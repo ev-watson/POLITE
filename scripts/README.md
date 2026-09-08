@@ -8,7 +8,7 @@ run them from the repo root with the POLITE interpreter:
 The device stack: QHY268M camera + ZWO EFW filter wheel + Optec Pyxis HWP
 rotator are exposed over ASCOM Alpaca (INDIGO `indigo_agent_alpaca` bridge or
 the POLITE QHY Alpaca server); the PlaneWave mount + field rotator stay on
-PWI4. **DEC drive is down** — the pointing path below is wired but unexercised.
+PWI4.
 
 ## Server
 
@@ -41,12 +41,10 @@ it read back; a plan with coordinates run as `--mount off` aborts unless
 `--no-mount-home` skips homing, `--park-on-finish` parks after the data is safe,
 `--skip-mount-check` downgrades the gate to a warning.
 
-POLITE's DEC drive (axis 1) does not currently engage, so this path has **not**
-been run against a working mount — the first pointed night is commissioning.
-Nothing is special-cased to the fault: the gate simply refuses to slew an axis
-that will not energize, and `obs_utils.mount.enable_motors`' unbounded `while
-True` poll is bypassed so a dead drive aborts in under a minute instead of
-hanging until dawn.
+Nothing is special-cased to any particular fault: the gate simply refuses to
+slew an axis that will not energize, and `obs_utils.mount.enable_motors`'
+unbounded `while True` poll is bypassed so an axis that never comes up aborts in
+under a minute instead of hanging until dawn.
 
 **PWI4 coordinate warning.** At this site PWI4's `altitude_degs` coordinate is
 zenith distance: **0° is zenith and 90° is the horizon**. The shed-safe window
@@ -90,8 +88,8 @@ live here is now `caltools.conversion_gain_from_flat_pair`, called from §8 of
 
 Removed 2026-07-28. `generate_site_checklists.py` and the four PDFs it emitted
 hard-coded the retired July-9 plan and printed **unsafe** instructions — mount
-homing on a dead DEC drive, and a `plan_night --run` entry point that no longer
-exists. A checklist that contradicts the runner is worse than none. The
+homing that was unsafe on the hardware at the time, and a `plan_night --run`
+entry point that no longer exists. A checklist that contradicts the runner is worse than none. The
 authoritative pre-flight is now the runner itself: `execute_night.py` without
 `--run` prints the full execution order, the device set it will connect, and
 every gate it will apply.

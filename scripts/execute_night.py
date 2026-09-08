@@ -58,13 +58,10 @@ The dry-run touches no hardware: it prints the expanded plan, the HWP angles the
 plan will command, what the mount will do, and a duration estimate so you can
 eyeball it before committing.
 
-MOUNT STATUS: POLITE's DEC drive (PWI4 axis 1) does not currently engage. The
-pointing path here is complete and wired, but it has NOT been exercised against
-a working mount -- treat its first pointed night as commissioning. Nothing is
-special-cased to the fault: ``night_safety.verify_mount`` simply refuses to slew
-an axis that will not energize, and names axis1 when that is the one that failed.
-When the drive is repaired the same gate passes and pointed science runs with no
-code change. Until then, a plan with coordinates runs unpointed only via the
+MOUNT: the pointing path here is complete, wired, and gated. Nothing is
+special-cased to any particular fault: ``night_safety.verify_mount`` simply
+refuses to slew an axis that will not energize, and names the axis that failed
+rather than hanging on it. A plan with coordinates runs unpointed only via the
 explicit ``--mount off --unpointed`` pair, and those frames carry no sky
 position -- the 2026-07-09 salvage night is what that looks like in the data.
 """

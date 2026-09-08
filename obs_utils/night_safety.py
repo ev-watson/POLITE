@@ -33,13 +33,12 @@ at -13 C is still good data. ``obs_utils.night_session.wait_for_cooler`` is the
 because a science frame at an unknown temperature is not worth keeping. Two
 policies, two names, on purpose.
 
-``verify_mount`` is written for a mount that is currently BROKEN. POLITE's DEC
-drive (axis 1) does not engage, and ``obs_utils.mount.enable_motors`` waits for
-both axes in an unbounded ``while True`` -- on this hardware that never returns.
-The gate therefore does its own bounded enable and names the axis that failed,
-so a dead drive produces an operator-readable abort in under a minute instead of
-a hang. Nothing here is special-cased to the fault: when the drive is repaired
-the same gate passes and the pointed path runs unchanged.
+``verify_mount`` is written to fail closed on an axis that will not energize.
+``obs_utils.mount.enable_motors`` waits for both axes in an unbounded ``while
+True``, which never returns if one of them stays down. The gate therefore does
+its own bounded enable and names the axis that failed, so a drive fault produces
+an operator-readable abort in under a minute instead of a hang. Nothing here is
+special-cased to any particular axis or fault.
 """
 from __future__ import annotations
 
@@ -64,7 +63,7 @@ HWP_DEFAULT_TOL_DEG = 0.25
 
 # Bounded replacement for obs_utils.mount.enable_motors' unbounded poll. The
 # PlaneWave axes energize in a few seconds when healthy; a minute is generous
-# and still fails fast on the dead DEC drive.
+# and still fails fast on an axis that never comes up.
 MOUNT_ENABLE_TIMEOUT_S = 60.0
 MOUNT_CONNECT_TIMEOUT_S = 30.0
 
@@ -275,9 +274,9 @@ def _axis_enabled(status, axis: int) -> Optional[bool]:
 def _enable_axes(pwi4, *, timeout_s: float, poll_s: float = 1.0) -> List[int]:
     """Enable both mount axes, bounded in time. Returns the axes still down.
 
-    ``obs_utils.mount.enable_motors`` polls forever, which on POLITE's dead DEC
-    drive means the runner hangs with no message. This does the same work with
-    a deadline and reports *which* axis never came up.
+    ``obs_utils.mount.enable_motors`` polls forever, so an axis that never
+    energizes hangs the runner with no message. This does the same work with a
+    deadline and reports *which* axis never came up.
     """
     for axis in (0, 1):
         if _axis_enabled(pwi4.status(), axis) is not True:
@@ -370,13 +369,11 @@ def verify_mount(
             "FIX: clear the drive fault in PWI4 and confirm both axes enable "
             "there before rerunning."
         )
-        if 1 in down:
-            msg += (
-                "\nNOTE: axis1 is POLITE's known-dead DEC drive. If it has not "
-                "been repaired yet, run\nthis plan without pointing "
-                "(--mount off --unpointed) and accept that the frames carry no "
-                "sky position."
-            )
+        msg += (
+            "\nNOTE: if the axis cannot be brought up, run this plan without "
+            "pointing\n(--mount off --unpointed) and accept that the frames "
+            "carry no sky position."
+        )
         if skip:
             logger.warning("[mount] %s", msg)
             logger.warning("[mount] skip override set: continuing DESPITE dead axis.")
