@@ -139,10 +139,19 @@ def _build_polite_filename(
     frame_type: str,
     exposure_s: float,
     index: int,
+    hwp_deg: Optional[float] = None,
 ) -> str:
+    """Build the POLITE frame name.
+
+    ``hwp_deg`` is part of the name, not decoration: a pol_flat/pol brick
+    captures ``count`` frames at EACH of its HWP angles, so without the angle
+    every angle writes the same ``_001..00n`` names and silently overwrites the
+    previous one. Data loss observed on sky 2026-09-07.
+    """
     target = _slugify(object_name) if object_name else frame_type.upper()
     filt = _filter_slug(filter_name, frame_type)
-    return f"{date_str}_{target}_{filt}_{exposure_s:g}s_{index:03d}.fits"
+    hwp = "" if hwp_deg is None else f"_hwp{float(hwp_deg) % 360.0:05.1f}".replace(".", "p")
+    return f"{date_str}_{target}_{filt}_{exposure_s:g}s{hwp}_{index:03d}.fits"
 
 
 def _detector_cards(ctx: Optional[SessionCaptureContext], plan: FramePlan) -> Optional[DetectorCards]:
@@ -629,6 +638,8 @@ def _run_frames(
                 filename = _build_polite_filename(
                     date_str, object_name, filter_name, frame_type,
                     plan.exposure_s, idx,
+                    hwp_deg=(achieved_hwp if achieved_hwp is not None
+                             else plan.hwp_angle_deg),
                 )
             else:
                 filename = _build_filename(

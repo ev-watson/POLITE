@@ -100,16 +100,30 @@ def default_sky_regions() -> List[SkyRegionLimit]:
     higher is better. The observatory shed blocks everything below 42 deg
     altitude, so 42 deg is a hard floor and the zenith itself is allowed.
 
+    The shed is NOT axisymmetric. Measured on sky 2026-09-07: slewing to
+    HD 204827 in the northeast hit the shed wall at an altitude the flat
+    42 deg floor allowed. In azimuth 0--90 deg the floor is therefore
+    **60 deg**, not 42.
+
     Owner decision 2026-09-07. This is the project's single source of truth for
     the PWI4 horizontal convention and supersedes every earlier
     "zenith distance 3--42 deg" statement anywhere in this repository.
     """
     return [
+        # Northeast quadrant: shed wall, measured 2026-09-07 (HD 204827).
+        SkyRegionLimit(
+            name="pwi4_ne_shed_wall_alt_60_to_90_deg",
+            alt_min_deg=60.0,
+            alt_max_deg=90.0,
+            az_min_deg=0.0,
+            az_max_deg=90.0,
+        ),
+        # Everywhere else.
         SkyRegionLimit(
             name="pwi4_altitude_42_to_90_deg",
             alt_min_deg=42.0,
             alt_max_deg=90.0,
-            az_min_deg=0.0,
+            az_min_deg=90.0,
             az_max_deg=360.0,
-        )
+        ),
     ]
