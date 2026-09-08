@@ -1,5 +1,5 @@
-# Monday 2026-09-07 (Julian) -- EVENING TWILIGHT FLATS, first pointed use of the
-# repaired mount. There is no even-illumination panel yet, so the twilight sky
+# Monday 2026-09-07 (Julian) -- EVENING TWILIGHT FLATS, POLITE's first pointed
+# night. There is no even-illumination panel yet, so the twilight sky
 # is the only flat source POLITE has; 20260819_calibration.yaml (panel) does NOT
 # run tonight.
 #
@@ -8,6 +8,12 @@
 #   sunset 19:03 PDT | civil (-6) 19:28 | -8 19:38 | nautical (-12) 19:57
 #   astronomical (-18) 20:27 | moon 10% illuminated, SET at 17:00 -> dark night
 # START THIS PLAN AT ~19:08 PDT (sun ~ -2 deg). It ends ~19:48 (sun ~ -10).
+# LATEST START: the ladder tops out at 20 s, so nautical 19:57 is the hard wall --
+# past it the sky no longer fills a 20 s V frame. Whole ladder is 35-40 min wall
+# clock, so 19:17 is the last start that still fits. Later than that, drop whole
+# `plan:` passes from the SHORT end (a faint sky makes 0.2/0.5 s near-empty anyway):
+# drop A+B -> start by 19:27 (128 frames), A+B+C -> 19:34 (80), E only -> 19:47 (32).
+# See night_plans/20260907_night_sheet.md "How late can the flats start".
 #
 # >>> WHY AN EXPOSURE LADDER AND NOT ONE EXPOSURE <<<
 # POLITE has never taken a pointed twilight flat, so the sky count rate at this
@@ -51,7 +57,8 @@
 # homing here would burn the twilight window. --yes so a cooler-gate timeout
 # cannot block on stdin -- PRE-COOL from ~18:15 so the gate passes immediately.
 #
-# IF THE MOUNT REPAIR FAILED: this plan still yields usable flats unpointed --
+# IF THE MOUNT IS UNAVAILABLE at flat time: this plan still yields usable flats
+# unpointed --
 #   ... --run --mount off --unpointed --subdir twiflat_unpointed
 # at whatever fixed attitude the mount holds. Sky uniformity is then unverified;
 # note it and reduce with caution. The standards plans are scrubbed in that case.

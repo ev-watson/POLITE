@@ -79,7 +79,7 @@ class _TrackingPwi4:
         )
 
 
-def test_pointed_sequence_requires_tracking_after_the_repaired_mount_slew():
+def test_pointed_sequence_requires_tracking_after_the_target_slew():
     target = TargetPlan("HD 154892", ra_hours=17.12817, dec_deg=15.21056)
 
     healthy = _TrackingPwi4()

@@ -62,7 +62,7 @@
 # only so --park-on-finish has a mount to park; the plan images nothing on the sky.
 # It performs no slews, so it cannot abort on the pointing gate -- which is what
 # makes it the reliable parker even if both science plans died before it.
-# If the mount repair failed, drop --mount on and --park-on-finish.
+# If the mount is unavailable, drop --mount on and --park-on-finish.
 
 uses: palette.yaml
 session: "20260907"

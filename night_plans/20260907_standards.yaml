@@ -68,7 +68,9 @@
 #              --run --subdir standards1 --yes --no-mount-home
 # Start ~20:30 PDT (astronomical dark is 20:27). See 20260907_night_sheet.md for
 # the chained command that also runs pass 2 and the darks.
-# NOTE: the runner does not focus. Focus is set by hand in the 19:50-20:25 gap.
+# NOTE: the runner does not focus, and nothing tonight does -- the train is already
+# focused for stellar polarimetry. The attended gap before this plan is a pointing
+# check only (HD 154345 enters the safe window at 20:13).
 
 uses: palette.yaml
 session: "20260907"
@@ -89,8 +91,8 @@ camera:
 
 bricks:
   # First frames of the unattended block: 3 short Clear-filter frames on the
-  # first target, so the very first thing written to disk proves the repaired
-  # mount actually put the star in the field. Cheap (~15 s) and it gives the
+  # first target, so the very first thing written to disk proves the mount
+  # actually put the star in the field. Cheap (~15 s) and it gives the
   # PlateSolve3 commissioning a real pointed frame to chew on afterwards.
   pointcheck:
     type: stack

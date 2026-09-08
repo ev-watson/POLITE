@@ -15,10 +15,13 @@ timeline, the exact commands and the sky table. In brief:
    (twilight flats, standards, standards pass 2, darkcal).
 2. **19:05 start `20260907_twilight_flats.yaml`** — 224 frames, ~40 min, zenith
    distance 20° / az 101°, tracking off, a 0.2→20 s ladder across four HWP angles.
-   Start on time and do not shorten it.
-3. 19:50–20:25 attended: focus by hand (the runner never focuses), confirm
-   HD 154345 is in the field, and take the read-only PlateSolve3 proof below if
-   PS3CLI is present.
+   Start on time and do not shorten it. **Late start:** nautical 19:57 is the hard
+   wall, so 19:17 is the last start that fits the whole ladder; after that drop whole
+   `plan:` passes from the short end (A+B → 19:27, A+B+C → 19:34, E only → 19:47).
+   The flats need a slewing mount; the standards do not need tonight's flats.
+3. ~20:15 attended, pointing only: confirm HD 154345 is in the field (its safe
+   window opens 20:13). **No focus step** — the train is already focused for stellar
+   polarimetry and nothing tonight touches it.
 4. **20:30 launch the chained unattended command** (standards pass 1 → pass 2 →
    `darkcal`, joined with `;` so an abort does not stop the rest). Parking rides on
    `darkcal` because it performs no slews and so cannot abort on the pointing gate.
@@ -54,7 +57,8 @@ gain 0 and do not transfer), and **Mode 5 read noise**:
 
 ## SECOND — Commission PlateSolve3 read-only on the observatory PC
 
-*(Step 3 above is the natural moment for this; it is unchanged and still open.)*
+*(Unchanged and still open. It is **not** on the pre-capture path — solve a frame
+that is already on disk, after the chain finishes, and only if there is time.)*
 
 **Context:** The 2026-07-30 drift-aware tracking overlays have been reviewed
 by the user for all seven sequences: each selects the intended physical A/B
