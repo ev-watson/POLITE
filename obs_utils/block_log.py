@@ -93,11 +93,12 @@ def pwi4_snapshot(pwi4) -> Dict[str, Any]:
         if hasattr(st, "rotator") and st.rotator.exists:
             out["instrot_deg"] = float(st.rotator.field_angle_degs)
         if hasattr(st, "mount"):
-            from .obs_math import airmass_kasten_young, zenith_distance_to_altitude
+            from .obs_math import airmass_kasten_young
 
-            z = getattr(st.mount, "altitude_degs", None)
-            out["pwi4_zenith_distance_deg"] = z
-            out["airmass"] = airmass_kasten_young(zenith_distance_to_altitude(z))
+            # Conventional altitude as PWI4 reports it (90 = zenith).
+            alt = getattr(st.mount, "altitude_degs", None)
+            out["pwi4_alt_deg"] = alt
+            out["airmass"] = airmass_kasten_young(alt)
     except Exception:
         logger.debug("PWI4 snapshot failed", exc_info=True)
     return out

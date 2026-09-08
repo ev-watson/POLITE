@@ -18,10 +18,10 @@ ImageCaptureFn = Callable[[Path], None]
 class ModelBuildConfig:
     image_arcsec_per_pixel: float
     num_alt: int = 3
-    # PWI4 calls this field altitude, but POLITE uses 0 deg=zenith and
-    # 90 deg=horizon. Keep model points inside the shed-safe 3--42 deg window.
-    min_alt: float = 3.0
-    max_alt: float = 42.0
+    # PWI4 altitude is conventional: 90 deg = zenith, 0 deg = horizon. Keep
+    # model points inside the shed-safe 42--90 deg altitude window.
+    min_alt: float = 42.0
+    max_alt: float = 90.0
     num_az: int = 6
     min_az: float = 5.0
     max_az: float = 355.0

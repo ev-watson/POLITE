@@ -74,9 +74,8 @@ class AlpacaConfig:
 class SkyRegionLimit:
     """Allowed PWI4 horizontal-coordinate rectangle.
 
-    ``alt_*_deg`` deliberately retains its established API name, but its value
-    is the PWI4 mount coordinate: zenith distance (0 deg = zenith, 90 deg =
-    horizon), *not* conventional astronomical altitude.
+    ``alt_*_deg`` is conventional apparent altitude, exactly as PWI4 reports it
+    in ``mount.altitude_degs``: **90 deg = zenith, 0 deg = horizon**.
     """
 
     name: str
@@ -95,16 +94,21 @@ class SlewLimits:
 
 
 def default_sky_regions() -> List[SkyRegionLimit]:
-    """POLITE's usable PWI4 zenith-distance window.
+    """POLITE's usable PWI4 altitude window: **42--90 deg**.
 
-    The observatory shed blocks PWI4 coordinates above 42 deg (closer to the
-    horizon), while operating closer than 3 deg to the zenith is avoided.
+    Altitude is conventional: 90 deg is the zenith, 0 deg the horizon, and
+    higher is better. The observatory shed blocks everything below 42 deg
+    altitude, so 42 deg is a hard floor and the zenith itself is allowed.
+
+    Owner decision 2026-09-07. This is the project's single source of truth for
+    the PWI4 horizontal convention and supersedes every earlier
+    "zenith distance 3--42 deg" statement anywhere in this repository.
     """
     return [
         SkyRegionLimit(
-            name="pwi4_zenith_distance_3_to_42_deg",
-            alt_min_deg=3.0,
-            alt_max_deg=42.0,
+            name="pwi4_altitude_42_to_90_deg",
+            alt_min_deg=42.0,
+            alt_max_deg=90.0,
             az_min_deg=0.0,
             az_max_deg=360.0,
         )

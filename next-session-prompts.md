@@ -10,6 +10,10 @@ flat source. The reduction pipeline is validated; pipeline tweaks are out of sco
 **What to do:** follow `night_plans/20260907_night_sheet.md` — it holds the full
 timeline, the exact commands and the sky table. In brief:
 
+0. **Start both Alpaca servers first** — notebook §2 first cell,
+   `start_observatory_alpaca_servers` (ASCOM Remote :11111 = EFW + HWP,
+   QHY :11112 = camera). `connect_all()` starts nothing; with the servers down all
+   three devices fail together.
 1. 18:00 pre-cool to −10 °C and home the mount **once** by hand (every plan runs
    `--no-mount-home`). 18:30 dry-run all four plans on the observatory PC
    (twilight flats, standards, standards pass 2, darkcal).

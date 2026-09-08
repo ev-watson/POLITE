@@ -25,7 +25,7 @@ from .imaging import CaptureRequest, capture_fits_file, select_filter, select_hw
 from .mount import (
     slew_altaz,
     slew_radec_j2000,
-    verify_pwi4_zenith_distance,
+    verify_pwi4_altitude,
     wait_for_slew,
 )
 from .night_display import NightReporter, estimated_duration_s, total_frame_count
@@ -258,7 +258,6 @@ def _auto_pointing_fields(pwi4) -> _PointingFields:
         airmass_kasten_young,
         deg_to_dms,
         hours_to_hms,
-        zenith_distance_to_altitude,
     )
 
     fields = _PointingFields()
@@ -277,10 +276,11 @@ def _auto_pointing_fields(pwi4) -> _PointingFields:
         fields.dec_deg = float(dec_d)
         fields.dec_sex = deg_to_dms(dec_d)
 
-    # PWI4's field called ``altitude_degs`` is a zenith distance for this
-    # installation (0=zenith, 90=horizon). FITS ALTITUDE and AIRMASS use the
-    # conventional altitude above the horizon.
-    fields.alt_deg = zenith_distance_to_altitude(getattr(mount, "altitude_degs", None))
+    # PWI4's ``altitude_degs`` is already conventional altitude above the
+    # horizon (90=zenith), the same convention FITS ALTITUDE and airmass use.
+    # No conversion: it goes into the header as reported.
+    _alt = getattr(mount, "altitude_degs", None)
+    fields.alt_deg = None if _alt is None else float(_alt)
     fields.az_deg = getattr(mount, "azimuth_degs", None)
     fields.airmass = airmass_kasten_young(fields.alt_deg)
 
@@ -687,7 +687,7 @@ def _slew_to_target(pwi4, target: TargetPlan, limits) -> None:
     else:
         return
     wait_for_slew(pwi4)
-    verify_pwi4_zenith_distance(pwi4, limits)
+    verify_pwi4_altitude(pwi4, limits)
     if target.track:
         pwi4.mount_tracking_on()
         tracking = getattr(pwi4.status().mount, "is_tracking", None)

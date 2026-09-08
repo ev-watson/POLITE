@@ -273,7 +273,7 @@ def run(config, plan_path: Path, args) -> int:
     if connect_hwp:
         logger.info("[connect] HWP rotator (plan commands %d angle(s)) ...", len(hwp_angles))
         try:
-            session = interactive.connect_rotator(alpaca_config=config.startup.alpaca)
+            session = interactive.connect_hwp(alpaca_config=config.startup.alpaca)
         except Exception as exc:
             if not args.skip_hwp_check:
                 raise SystemExit(

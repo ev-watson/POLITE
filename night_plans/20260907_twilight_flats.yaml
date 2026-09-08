@@ -25,18 +25,19 @@
 # In reduction: KEEP the passes whose median lands in the usable range and throw
 # the rest away. Saturated and near-empty sets are expected and are not a fault.
 #
-# >>> POINTING: alt: IS A ZENITH DISTANCE <<<
-# PWI4's horizontal coordinate at POLITE is zenith distance (0 = zenith,
-# 90 = horizon) and the shed-safe window is 3--42 deg. `alt: 20` below therefore
-# means 70 deg ABOVE the horizon. az 101 is the anti-solar azimuth for this
-# window (sun az 279.5 -> 283.6 across 19:19--19:48).
+# >>> POINTING: alt: IS CONVENTIONAL ALTITUDE <<<
+# PWI4's horizontal coordinate is conventional altitude (90 = zenith,
+# 0 = horizon) and the shed-safe window is 42--90 deg. `alt: 70` below therefore
+# means 70 deg ABOVE the horizon, 20 deg from the zenith. az 101 is the
+# anti-solar azimuth for this window (sun az 279.5 -> 283.6 across 19:19--19:48).
+# Owner decision 2026-09-07; see obs_utils/config.default_sky_regions().
 #
 # TRACKING IS OFF on purpose: at 0.224"/px an untracked star trails ~67 px/s, so
 # stars smear into faint streaks that a median combine removes. This is the only
 # star-rejection this plan has.
 #
 # >>> SKY POLARIZATION (why 4 HWP angles per rung) <<<
-# Inside the 3--42 deg window the Arago/Babinet neutral points are unreachable
+# Inside the 42--90 deg altitude window the Arago/Babinet neutral points are unreachable
 # (they sit ~20 deg from the anti-solar/solar point, i.e. z ~ 76 deg), so the
 # twilight sky POLITE can point at is strongly linearly polarized -- scattering
 # angle ~76 deg at this pointing, near the sin^2/(1+cos^2) maximum. Two things
@@ -97,16 +98,16 @@ bricks:
               imagetyp: FLAT, object_name: TwilightFlat, pol_seq_id: "twiflatV_20_20260907"}
 
 # Five passes over the same anti-solar sky point, each re-verifying the
-# zenith-distance gate. The rungs climb with the fading sky; passes overlap by
+# altitude gate. The rungs climb with the fading sky; passes overlap by
 # one rung so no sky level falls between two passes.
 plan:
-  - {target: "TwilightSky-A", alt: 20, az: 101, track: false,   # ~19:08, sun ~ -2
+  - {target: "TwilightSky-A", alt: 70, az: 101, track: false,   # ~19:08, sun ~ -2
      lay: [flatV_0p2, flatV_0p5, flatV_1p2]}
-  - {target: "TwilightSky-B", alt: 20, az: 101, track: false,   # ~19:14
+  - {target: "TwilightSky-B", alt: 70, az: 101, track: false,   # ~19:14
      lay: [flatV_0p5, flatV_1p2, flatV_3]}
-  - {target: "TwilightSky-C", alt: 20, az: 101, track: false,   # ~19:21
+  - {target: "TwilightSky-C", alt: 70, az: 101, track: false,   # ~19:21
      lay: [flatV_1p2, flatV_3, flatV_8]}
-  - {target: "TwilightSky-D", alt: 20, az: 101, track: false,   # ~19:30
+  - {target: "TwilightSky-D", alt: 70, az: 101, track: false,   # ~19:30
      lay: [flatV_3, flatV_8, flatV_20]}
-  - {target: "TwilightSky-E", alt: 20, az: 101, track: false,   # ~19:40, sun ~ -9
+  - {target: "TwilightSky-E", alt: 70, az: 101, track: false,   # ~19:40, sun ~ -9
      lay: [flatV_8, flatV_20]}

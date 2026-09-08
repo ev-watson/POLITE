@@ -160,43 +160,44 @@ def slew_altaz(
     az_deg: float,
     limits: Optional[SlewLimits] = None,
 ) -> None:
-    """Slew with PWI4's horizontal-coordinate convention.
+    """Slew in PWI4's horizontal coordinates.
 
-    ``alt_deg`` is PWI4's zenith distance: 0 deg is zenith and 90 deg is the
-    horizon. It is not conventional altitude above the horizon. Region limits
-    therefore protect the site's allowed PWI4 range (currently 3--42 deg).
+    ``alt_deg`` is conventional apparent altitude: 90 deg is the zenith, 0 deg
+    the horizon. Region limits protect the site's allowed range, currently
+    42--90 deg altitude (the shed blocks everything lower).
     """
     if limits and limits.enforce_regions and limits.regions:
         if not _altaz_allowed(alt_deg, az_deg, limits.regions):
             raise ValueError(
-                f"Target PWI4 zenith-distance/Az {alt_deg:.2f}, {az_deg:.2f} "
-                "outside allowed regions"
+                f"Target PWI4 Alt/Az {alt_deg:.2f}, {az_deg:.2f} deg outside "
+                "allowed regions (altitude must be 42--90 deg; 90 is zenith)"
             )
     pwi4.mount_goto_alt_az(alt_deg, az_deg)
 
 
-def verify_pwi4_zenith_distance(pwi4: PWI4, limits: Optional[SlewLimits]) -> None:
+def verify_pwi4_altitude(pwi4: PWI4, limits: Optional[SlewLimits]) -> None:
     """Fail closed if PWI4 reports a final position outside the allowed window.
 
     Direct Alt/Az slews are checked before motion; J2000 slews can only be
     checked once PWI4 has completed the coordinate conversion. This read-back
-    makes both paths enforce the same shed/zenith restriction before a frame is
-    captured.
+    makes both paths enforce the same shed restriction before a frame is
+    captured. ``mount.altitude_degs`` is conventional altitude (90 = zenith).
     """
     if not limits or not limits.enforce_regions or not limits.regions:
         return
     status = pwi4.status()
-    z = getattr(status.mount, "altitude_degs", None)
+    alt = getattr(status.mount, "altitude_degs", None)
     az = getattr(status.mount, "azimuth_degs", None)
-    if z is None or az is None:
+    if alt is None or az is None:
         raise RuntimeError(
-            "PWI4 did not report zenith distance and azimuth after slew; "
-            "cannot verify the 3--42 deg observing window."
+            "PWI4 did not report altitude and azimuth after slew; "
+            "cannot verify the 42--90 deg altitude window."
         )
-    if not _altaz_allowed(float(z), float(az), limits.regions):
+    if not _altaz_allowed(float(alt), float(az), limits.regions):
         raise RuntimeError(
-            f"PWI4 reports zenith distance/Az {float(z):.2f}, {float(az):.2f} "
-            "outside the allowed observing region; no frames were captured."
+            f"PWI4 reports Alt/Az {float(alt):.2f}, {float(az):.2f} deg, outside "
+            "the allowed observing region (altitude must be 42--90 deg; 90 is "
+            "zenith); no frames were captured."
         )
 
 
@@ -208,6 +209,6 @@ def slew_radec_j2000(
 ) -> None:
     if limits and limits.enforce_regions and limits.regions:
         logger.info(
-            "PWI4 zenith-distance limits will be verified from status after the J2000 slew"
+            "PWI4 altitude limits will be verified from status after the J2000 slew"
         )
     pwi4.mount_goto_ra_dec_j2000(ra_hours, dec_deg)

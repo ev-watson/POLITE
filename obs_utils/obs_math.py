@@ -44,13 +44,12 @@ def airmass_kasten_young(altitude_deg: Optional[float]) -> Optional[float]:
 
 
 def zenith_distance_to_altitude(zenith_distance_deg: Optional[float]) -> Optional[float]:
-    """Convert zenith distance to conventional apparent altitude.
+    """Convert a zenith distance to conventional apparent altitude.
 
-    POLITE's PWI4 display/API uses ``0 deg = zenith`` and ``90 deg = horizon``
-    for the field it calls ``altitude_degs``.  FITS ``ALTITUDE`` and airmass,
-    by contrast, use the conventional astronomical altitude above the horizon.
-    Keep this conversion explicit at the device boundary rather than letting a
-    PWI4 coordinate leak into physical metadata.
+    **Do not call this on PWI4's ``mount.altitude_degs``.** That field is
+    already conventional altitude (90 deg = zenith), so converting it would
+    write ``90 - alt`` into FITS ``ALTITUDE`` and a wrong airmass. This helper
+    exists only for genuine zenith-distance inputs, e.g. a literature table.
     """
     if zenith_distance_deg is None:
         return None
