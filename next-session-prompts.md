@@ -1,6 +1,61 @@
 # Next-session prompts
 
-## TOP PROMPT — Commission PlateSolve3 read-only on the observatory PC
+## TOP PROMPT — Run the night of 2026-09-07 (first pointed night after the DEC repair)
+
+**Context:** The DEC drive (PWI4 axis 1) is being repaired on 2026-09-07. Assuming
+it works, this is POLITE's first pointed night: the first pointed twilight flat and
+the first star through the CDK20 + HWP + Savart train. The even-illumination panel
+is **not installed**, so the 2026-08-19 panel plans do not run; twilight is the only
+flat source. The reduction pipeline is validated; pipeline tweaks are out of scope.
+
+**What to do:** follow `night_plans/20260907_night_sheet.md` — it holds the full
+timeline, the exact commands, the sky table and the mount-failure fallback. In brief:
+
+1. 18:00 pre-cool to −10 °C and home the mount **once** by hand (every plan runs
+   `--no-mount-home`). 18:30 dry-run all four plans on the observatory PC
+   (twilight flats, standards, standards pass 2, darkcal).
+2. **19:05 start `20260907_twilight_flats.yaml`** — 224 frames, ~40 min, zenith
+   distance 20° / az 101°, tracking off, a 0.2→20 s ladder across four HWP angles.
+   Start on time and do not shorten it.
+3. 19:50–20:25 attended: focus by hand (the runner never focuses), confirm
+   HD 154345 is in the field, and take the read-only PlateSolve3 proof below if
+   PS3CLI is present.
+4. **20:30 launch the chained unattended command** (standards pass 1 → pass 2 →
+   `darkcal`, joined with `;` so an abort does not stop the rest). Parking rides on
+   `darkcal` because it performs no slews and so cannot abort on the pointing gate.
+5. Everything is on disk by ~22:15 — 811 frames. Confirm ≥ 50 GB free first
+   (~43 GB expected).
+
+**Success criterion:** a full twilight-flat ladder plus at least one complete
+8-angle unsaturated modulation cycle on one unpolarized and one polarized standard,
+with the mount parked and `FITSDATA/` otherwise untouched.
+
+**Files:** `night_plans/20260907_night_sheet.md`, `20260907_twilight_flats.yaml`,
+`20260907_standards.yaml`, `20260907_standards_pass2.yaml`, `20260907_darkcal.yaml`,
+and the control notebook `notebooks/observation_notebooks/20260907_observation.ipynb`
+(mirrors the sheet; motion cells commented out, `live.*` cells read-only).
+
+**Afterwards:** reduce in a new `notebooks/reductions/` notebook — the master flat,
+the instrumental q/u zero point from the two unpolarized standards, the response
+amplitude and PA zero point from the two polarized ones, the dark rate at Mode 5 /
+gain 56 / offset 20 (**OPEN** — the caltools dark numbers on file are Mode 0 /
+gain 0 and do not transfer), and **Mode 5 read noise**:
+
+- σ of (biasᵢ − biasⱼ)/√2 over the 50 `darkcal` bias frames gives ADU; the conversion
+  gain comes free from the twilight flat ladder read as a PTC (consecutive pairs
+  within a rung, mean vs difference variance — the `20260717_ptc_twilight.yaml`
+  tactic). Fit the ≤3 s rungs; the 8/20 s rungs are contaminated by sky fade within
+  the pair. **Closes in e⁻.** Offset 20's pedestal is 50–100 ADU, so the left tail is
+  intact — glance at the histogram anyway, but it is not a gate.
+- **Mode 3 / gain 0 read noise is deferred and stays OPEN** (owner, 2026-09-07). It
+  needs its own bias set plus its own PTC light source: the panel, or an attended
+  morning twilight (astronomical dawn 05:01, civil 06:00, sunrise 06:25 PDT).
+
+---
+
+## SECOND — Commission PlateSolve3 read-only on the observatory PC
+
+*(Step 3 above is the natural moment for this; it is unchanged and still open.)*
 
 **Context:** The 2026-07-30 drift-aware tracking overlays have been reviewed
 by the user for all seven sequences: each selects the intended physical A/B

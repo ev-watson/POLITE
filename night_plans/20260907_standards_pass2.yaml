@@ -1,0 +1,79 @@
+# Monday 2026-09-07 (Julian) -- POLARIMETRIC STANDARDS, PASS 2 (optional, unattended).
+#
+# OPTIONAL. The night's deliverable is 20260907_standards.yaml (pass 1); this is
+# a second visit to the three standards whose shed-safe windows stay wide open
+# past midnight, at a different hour angle. Delete it from the chained command
+# and nothing is lost except the repeatability check.
+#
+# WHY A SECOND EPOCH IS WORTH ~40 MINUTES: an instrumental q/u offset is fixed in
+# the INSTRUMENT frame, while a real sky polarization is fixed on the SKY. The
+# CDK20 sits on an alt-az mount with a rotator that this plan does not command,
+# so between 20:30 and 22:00 the field rotates underneath the Savart plate. If
+# the recovered PA of HD 183143 and HD 204827 moves between pass 1 and pass 2 by
+# the parallactic-angle change and their q/u moves with it, the response is
+# tracking the sky; if the offset stays put in detector coordinates, that part is
+# instrumental. Nothing else tonight separates those two. CONJECTURED that one
+# 90-minute baseline is enough to see it -- that is what this pass tests.
+#
+# HD 154345 IS DELIBERATELY ABSENT. Its shed-safe window closes at 22:12 PDT and
+# an out-of-window slew does not skip a target, it ABORTS THE RUN. Pass 2 is
+# built only from targets that cannot time out:
+#   HD 183143  safe to 00:02   HD 202573  safe to 02:05   HD 204827  safe to 02:28
+#
+# Order is by how early each window would eventually close. Exposure ladder,
+# angle count and frame count are identical to pass 1 on purpose, so the two
+# epochs are directly comparable. See 20260907_standards.yaml for the full
+# rationale on target choice, the 0.3/1.5/6 s ladder, and the standard-star
+# source (reference-sheets/polarimetry/papers/standard-stars.md, Source A).
+#
+#   Preview: scripts/execute_night.py night_plans/20260907_standards_pass2.yaml
+#   Run:     scripts/execute_night.py night_plans/20260907_standards_pass2.yaml \
+#              --run --subdir standards2 --yes --no-mount-home
+# Start ~21:20 PDT, immediately after pass 1. Ends ~22:00.
+
+uses: palette.yaml
+session: "20260907"
+observer: "POLITE"
+telescope: "CDK20"
+observatory: "Julian, CA"
+base_data_dir: FITSDATA
+naming: polite
+calibrate_stage: after
+
+camera:
+  readout_mode: 5
+  readout_mode_name: "Mode 5"
+  gain: 56
+  offset: 20
+  cooler_setpoint_c: -10.0
+  cooler_policy: at_or_below
+
+bricks:
+  HD183143_polV8_0p3s_p2: {type: pol_seq, filter: "Photometric V", angles: 8, exp: 0.3, n: 3,
+                           pol_seq_id: "HD183143_polV8_0p3s_20260907_p2"}
+  HD183143_polV8_1p5s_p2: {type: pol_seq, filter: "Photometric V", angles: 8, exp: 1.5, n: 3,
+                           pol_seq_id: "HD183143_polV8_1p5s_20260907_p2"}
+  HD183143_polV8_6s_p2:   {type: pol_seq, filter: "Photometric V", angles: 8, exp: 6.0, n: 3,
+                           pol_seq_id: "HD183143_polV8_6s_20260907_p2"}
+
+  HD202573_polV8_0p3s_p2: {type: pol_seq, filter: "Photometric V", angles: 8, exp: 0.3, n: 3,
+                           pol_seq_id: "HD202573_polV8_0p3s_20260907_p2"}
+  HD202573_polV8_1p5s_p2: {type: pol_seq, filter: "Photometric V", angles: 8, exp: 1.5, n: 3,
+                           pol_seq_id: "HD202573_polV8_1p5s_20260907_p2"}
+  HD202573_polV8_6s_p2:   {type: pol_seq, filter: "Photometric V", angles: 8, exp: 6.0, n: 3,
+                           pol_seq_id: "HD202573_polV8_6s_20260907_p2"}
+
+  HD204827_polV8_0p3s_p2: {type: pol_seq, filter: "Photometric V", angles: 8, exp: 0.3, n: 3,
+                           pol_seq_id: "HD204827_polV8_0p3s_20260907_p2"}
+  HD204827_polV8_1p5s_p2: {type: pol_seq, filter: "Photometric V", angles: 8, exp: 1.5, n: 3,
+                           pol_seq_id: "HD204827_polV8_1p5s_20260907_p2"}
+  HD204827_polV8_6s_p2:   {type: pol_seq, filter: "Photometric V", angles: 8, exp: 6.0, n: 3,
+                           pol_seq_id: "HD204827_polV8_6s_20260907_p2"}
+
+plan:
+  - {target: "HD 183143", ra: 19.4573788, dec: 18.295887, track: true,
+     lay: [HD183143_polV8_0p3s_p2, HD183143_polV8_1p5s_p2, HD183143_polV8_6s_p2]}
+  - {target: "HD 202573", ra: 21.265947, dec: 25.434451, track: true,
+     lay: [HD202573_polV8_0p3s_p2, HD202573_polV8_1p5s_p2, HD202573_polV8_6s_p2]}
+  - {target: "HD 204827", ra: 21.482697, dec: 58.739792, track: true,
+     lay: [HD204827_polV8_0p3s_p2, HD204827_polV8_1p5s_p2, HD204827_polV8_6s_p2]}

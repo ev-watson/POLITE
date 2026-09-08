@@ -1,0 +1,91 @@
+# Monday 2026-09-07 (Julian) -- BIAS + DARKS, run last, unattended.
+#
+# Deliberately a SEPARATE invocation from the standards so it still runs if a
+# science plan aborts (an out-of-window slew raises and kills its own run, not
+# this one). Chain it with `;` -- see 20260907_night_sheet.md -- never `&&`.
+#
+# SHUTTERLESS CAMERA: the QHY268M has no mechanical shutter, so every BIAS and
+# DARK below sets `filter: Dark` to close the light path with the EFW's slot-5
+# blank. A cal brick without it is a light leak, not a dark. The stock palette
+# bricks (bias/darks60/darks30) predate this and are not used here.
+#
+# WHAT IS MATCHED AND WHY:
+#   bias50   x50          -- the master bias AND the Mode 5 READ-NOISE set (see
+#                           below). At -10 C and Mode 5 the dark signal in every
+#                           science (<=6 s) and short-flat (<=3 s) frame is far
+#                           below read noise, so bias alone calibrates them.
+#   dark_6s  x10          -- matched to the longest science rung.
+#   dark_20s x10          -- matched to the longest twilight-flat rung.
+#   dark_60s x10          -- NOT matched to anything tonight. It is here to
+#                           MEASURE the dark rate at the current operating point:
+#                           Mode 5 / gain 56 / offset 20 at -10 C has never been
+#                           characterized (the caltools dark numbers on file are
+#                           Mode 0 / gain 0 and do not transfer). Two exposures
+#                           plus bias give the slope; 60 s gives it leverage.
+#                           OPEN until this reduces.
+# Total ~18 min, 80 frames.
+#
+# >>> THIS IS THE MODE 5 READ-NOISE MEASUREMENT <<<
+# 50 bias frames is the Mode 5 / gain 56 / offset 20 read-noise set. Reduce it the
+# Janesick way in caltools: sigma of (bias_i - bias_j)/sqrt(2) over many pairs, so
+# fixed-pattern cancels and what is left is temporal read noise -- in ADU.
+#
+# Converting that to ELECTRONS needs the conversion gain, and tonight's Mode 5
+# gain comes free from `20260907_twilight_flats.yaml`: each rung holds 4
+# consecutive frames at one HWP angle, and the ladder sweeps a wide range of
+# levels, so consecutive pairs give mean-vs-difference-variance -- a photon
+# transfer curve, exactly the tactic of 20260717_ptc_twilight.yaml. No extra
+# frames are needed. CONJECTURED that the short rungs (<=3 s) give a clean PTC and
+# the 8/20 s rungs do not: a pair there spans ~45 s of a sky fading ~1 mag every
+# few minutes, and that level change inflates the difference variance. Fit the
+# short rungs, use the long ones only as a consistency check.
+#
+# Mode 5 read noise in e- is therefore CLOSED by tonight's data.
+#
+# No clipping risk at offset 20: the pedestal lands around 50-100 ADU (owner,
+# 2026-09-07), far enough above zero that the bias distribution's left tail is
+# intact and the measured sigma is the real read noise. Still worth a glance at
+# the histogram in reduction, but it is not a gate.
+#
+# MODE 3 / GAIN 0 READ NOISE IS NOT PART OF TONIGHT. It needs its own bias set and,
+# for electrons, its own photon transfer curve -- and no light source exists for one
+# until the even-illumination panel is installed or someone works a morning twilight
+# by hand. Deferred deliberately, not forgotten.
+#
+# The cooler must still be at setpoint when this runs -- it will be, the whole
+# night is one continuous cooled session.
+#
+#   Preview: scripts/execute_night.py night_plans/20260907_darkcal.yaml
+#   Run:     scripts/execute_night.py night_plans/20260907_darkcal.yaml \
+#              --run --subdir darkcal --yes --mount on --no-mount-home --park-on-finish
+# This is the last invocation of the night and it parks the mount. --mount on exists
+# only so --park-on-finish has a mount to park; the plan images nothing on the sky.
+# It performs no slews, so it cannot abort on the pointing gate -- which is what
+# makes it the reliable parker even if both science plans died before it.
+# If the mount repair failed, drop --mount on and --park-on-finish.
+
+uses: palette.yaml
+session: "20260907"
+observer: "POLITE"
+telescope: "CDK20"
+observatory: "Julian, CA"
+base_data_dir: FITSDATA
+naming: polite
+calibrate_stage: before
+
+camera:
+  readout_mode: 5
+  readout_mode_name: "Mode 5"
+  gain: 56
+  offset: 20
+  cooler_setpoint_c: -10.0
+  cooler_policy: at_or_below
+
+bricks:
+  bias50:   {type: cal, frame: BIAS, exp: 0,  n: 50, filter: Dark}
+  dark_6s:  {type: cal, frame: DARK, exp: 6,  n: 10, filter: Dark}
+  dark_20s: {type: cal, frame: DARK, exp: 20, n: 10, filter: Dark}
+  dark_60s: {type: cal, frame: DARK, exp: 60, n: 10, filter: Dark}
+
+plan:
+  - cal: [bias50, dark_6s, dark_20s, dark_60s]

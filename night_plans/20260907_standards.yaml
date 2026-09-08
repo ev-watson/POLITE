@@ -1,0 +1,147 @@
+# Monday 2026-09-07 (Julian) -- POLARIMETRIC STANDARDS, PASS 1 (unattended).
+#
+# This is the deliberately unambitious successor to 20260819_standards.yaml,
+# which never ran. Four standards, not six; each gets a full 8-angle V-band
+# modulation cycle at THREE exposures instead of one, because POLITE has never
+# put a star through this train and the count rate is unmeasured.
+#
+#   HD 154345   unpolarized   V=6.8      -> instrumental q/u zero point
+#   HD 202573   unpolarized   V=7.0      -> independent check of the same
+#   HD 183143   P_max=6.1%  lam_max=0.56um  PA=0    V=6.9  -> amplitude + PA
+#   HD 204827   P_max=5.6%  lam_max=0.46um  PA=60   V=7.9  -> amplitude + PA
+#
+# Polarizations, position angles and B1950 coordinates come from the UKIRT/JAC
+# standard-star list in reference-sheets/polarimetry/papers/standard-stars.md
+# (Source A; the polarized entries trace to the Gehrels 1974 "Serkowski" list).
+# ESTABLISHED as sheet values. The sheet quotes P_max and lam_max of a Serkowski
+# fit, so the V-band (0.55 um) polarization equals P_max for HD 183143 and is a
+# few percent lower for HD 204827 -- evaluate the Serkowski law in reduction,
+# do not assume P_V = P_max.
+#
+# >>> WHY THESE FOUR, AND WHAT WAS DROPPED <<<
+# Two unpolarized + two polarized is the minimum that separates an instrumental
+# offset from an instrumental scale error, and the two polarized standards have
+# sky PAs 60 deg apart, so they constrain the PA zero point and expose q/u
+# cross-talk independently. All four are V=6.8-7.9, a 1.1 mag span, so ONE
+# exposure ladder serves every target.
+#   * HD 154445 and HD 161056 (in the 0819 plan) SET before astronomical dark on
+#     this date -- dropped.
+#   * BD+32 3739 passes within 0.2 deg of the zenith and HD 165908 within 2.5 deg;
+#     both cross INSIDE the 3 deg inner limit. A slew there raises out of
+#     verify_pwi4_zenith_distance and ABORTS THE WHOLE RUN. Dropped -- do not
+#     re-add them on this date.
+#   * HD 154892 (0819) is a Schmidt-list low-pol star, redundant with two
+#     Gehrels unpolarized standards. Dropped to keep the night short.
+#
+# >>> POINTING SAFETY <<<
+# PWI4 "altitude" is ZENITH DISTANCE (0=zenith, 90=horizon); the shed-safe
+# window is 3--42 deg and the runner refuses to capture outside it. Computed for
+# 33.0701 N, -116.6451 (block_log.JULIAN_*), sun below -15 deg:
+#
+#   target       safe window (PDT)   transit   z at 20:30 / 21:30 / 22:30
+#   HD 154345    20:13 - 22:12       18:41       24.9 / 34.7 / 44.9   <-- CLOSES
+#   HD 183143    20:13 - 00:02       21:06       16.8 / 15.7 / 23.9
+#   HD 204827    20:13 - 02:28       23:07       36.7 / 30.5 / 26.5
+#   HD 202573    20:13 - 02:05       22:54       32.3 / 19.9 /  9.2
+#
+# HD 154345 is FIRST because its window closes at 22:12; nothing else is time
+# critical. Target order is not cosmetic -- do not reorder.
+#
+# >>> WHY AN EXPOSURE LADDER (0.3 / 1.5 / 6 s) <<<
+# Throughput through CDK20 + UV/IR-cut + HWP + V + Savart at Mode 5/gain 56 has
+# never been measured on a star, so the saturation exposure for V~7 is a guess
+# good to maybe a factor of ten. The ladder spans x20 around that guess: if the
+# train is far more efficient than expected the 0.3 s rung survives, if far less
+# the 6 s rung does. CONJECTURED that at least two rungs land usable.
+# S/N is NOT the constraint here -- at V~7 a single short frame is already
+# photon-rich; SATURATION and unguided tracking are. Short frames, many of them.
+# In reduction: use the brightest UNSATURATED rung per target and discard the
+# rest. A saturated 6 s rung is an expected outcome, not a failure.
+#
+# 8 HWP angles (0 - 157.5 deg, 22.5 deg steps) covers two full cycles of the
+# 4-theta modulation, which averages out HWP wobble; n=3 per angle gives a
+# within-angle scatter estimate. 72 frames per target visit.
+#
+# >>> RUN IT UNATTENDED <<<
+#   Preview: scripts/execute_night.py night_plans/20260907_standards.yaml
+#   Run:     scripts/execute_night.py night_plans/20260907_standards.yaml \
+#              --run --subdir standards1 --yes --no-mount-home
+# Start ~20:30 PDT (astronomical dark is 20:27). See 20260907_night_sheet.md for
+# the chained command that also runs pass 2 and the darks.
+# NOTE: the runner does not focus. Focus is set by hand in the 19:50-20:25 gap.
+
+uses: palette.yaml
+session: "20260907"
+observer: "POLITE"
+telescope: "CDK20"
+observatory: "Julian, CA"
+base_data_dir: FITSDATA
+naming: polite
+calibrate_stage: after
+
+camera:
+  readout_mode: 5
+  readout_mode_name: "Mode 5"
+  gain: 56
+  offset: 20
+  cooler_setpoint_c: -10.0
+  cooler_policy: at_or_below
+
+bricks:
+  # First frames of the unattended block: 3 short Clear-filter frames on the
+  # first target, so the very first thing written to disk proves the repaired
+  # mount actually put the star in the field. Cheap (~15 s) and it gives the
+  # PlateSolve3 commissioning a real pointed frame to chew on afterwards.
+  pointcheck:
+    type: stack
+    filter: Clear
+    exp: 2
+    n: 3
+    object_name: PointCheck
+
+  HD154345_polV8_0p3s: {type: pol_seq, filter: "Photometric V", angles: 8, exp: 0.3, n: 3,
+                        pol_seq_id: "HD154345_polV8_0p3s_20260907"}
+  HD154345_polV8_1p5s: {type: pol_seq, filter: "Photometric V", angles: 8, exp: 1.5, n: 3,
+                        pol_seq_id: "HD154345_polV8_1p5s_20260907"}
+  HD154345_polV8_6s:   {type: pol_seq, filter: "Photometric V", angles: 8, exp: 6.0, n: 3,
+                        pol_seq_id: "HD154345_polV8_6s_20260907"}
+
+  HD183143_polV8_0p3s: {type: pol_seq, filter: "Photometric V", angles: 8, exp: 0.3, n: 3,
+                        pol_seq_id: "HD183143_polV8_0p3s_20260907"}
+  HD183143_polV8_1p5s: {type: pol_seq, filter: "Photometric V", angles: 8, exp: 1.5, n: 3,
+                        pol_seq_id: "HD183143_polV8_1p5s_20260907"}
+  HD183143_polV8_6s:   {type: pol_seq, filter: "Photometric V", angles: 8, exp: 6.0, n: 3,
+                        pol_seq_id: "HD183143_polV8_6s_20260907"}
+
+  HD204827_polV8_0p3s: {type: pol_seq, filter: "Photometric V", angles: 8, exp: 0.3, n: 3,
+                        pol_seq_id: "HD204827_polV8_0p3s_20260907"}
+  HD204827_polV8_1p5s: {type: pol_seq, filter: "Photometric V", angles: 8, exp: 1.5, n: 3,
+                        pol_seq_id: "HD204827_polV8_1p5s_20260907"}
+  HD204827_polV8_6s:   {type: pol_seq, filter: "Photometric V", angles: 8, exp: 6.0, n: 3,
+                        pol_seq_id: "HD204827_polV8_6s_20260907"}
+
+  HD202573_polV8_0p3s: {type: pol_seq, filter: "Photometric V", angles: 8, exp: 0.3, n: 3,
+                        pol_seq_id: "HD202573_polV8_0p3s_20260907"}
+  HD202573_polV8_1p5s: {type: pol_seq, filter: "Photometric V", angles: 8, exp: 1.5, n: 3,
+                        pol_seq_id: "HD202573_polV8_1p5s_20260907"}
+  HD202573_polV8_6s:   {type: pol_seq, filter: "Photometric V", angles: 8, exp: 6.0, n: 3,
+                        pol_seq_id: "HD202573_polV8_6s_20260907"}
+
+# Coordinates: HD 154345 and HD 183143 are the SIMBAD J2000 values carried over
+# from 20260819_standards.yaml. HD 202573 and HD 204827 were precessed from the
+# sheet's B1950 positions with astropy FK4(B1950) -> ICRS; the same precession
+# reproduces the HD 183143 SIMBAD value to 1.0 arcsec, which is the check that
+# the conversion is right. HD 154345 is NOT precessed from the sheet -- it has
+# 0.85 arcsec/yr proper motion, so the sheet-precessed position is 43 arcsec off
+# and the SIMBAD J2000 value is the one to use. All errors are far inside the
+# 23' x 16' field either way, but the first frame is the real confirmation.
+plan:
+  - {target: "HD 154345", ra: 17.0434455, dec: 47.081879, track: true,
+     lay: [pointcheck,
+           HD154345_polV8_0p3s, HD154345_polV8_1p5s, HD154345_polV8_6s]}
+  - {target: "HD 183143", ra: 19.4573788, dec: 18.295887, track: true,
+     lay: [HD183143_polV8_0p3s, HD183143_polV8_1p5s, HD183143_polV8_6s]}
+  - {target: "HD 204827", ra: 21.482697, dec: 58.739792, track: true,
+     lay: [HD204827_polV8_0p3s, HD204827_polV8_1p5s, HD204827_polV8_6s]}
+  - {target: "HD 202573", ra: 21.265947, dec: 25.434451, track: true,
+     lay: [HD202573_polV8_0p3s, HD202573_polV8_1p5s, HD202573_polV8_6s]}
