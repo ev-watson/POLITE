@@ -11,7 +11,6 @@ from typing import Optional, Tuple
 
 __all__ = [
     "airmass_kasten_young",
-    "zenith_distance_to_altitude",
     "obsgeo_xyz",
     "hours_to_hms",
     "deg_to_dms",
@@ -41,22 +40,6 @@ def airmass_kasten_young(altitude_deg: Optional[float]) -> Optional[float]:
     if denom <= 0.0:
         return None
     return 1.0 / denom
-
-
-def zenith_distance_to_altitude(zenith_distance_deg: Optional[float]) -> Optional[float]:
-    """Convert a zenith distance to conventional apparent altitude.
-
-    **Do not call this on PWI4's ``mount.altitude_degs``.** That field is
-    already conventional altitude (90 deg = zenith), so converting it would
-    write ``90 - alt`` into FITS ``ALTITUDE`` and a wrong airmass. This helper
-    exists only for genuine zenith-distance inputs, e.g. a literature table.
-    """
-    if zenith_distance_deg is None:
-        return None
-    z = float(zenith_distance_deg)
-    if not 0.0 <= z <= 90.0:
-        return None
-    return 90.0 - z
 
 
 def obsgeo_xyz(

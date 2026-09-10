@@ -15,7 +15,6 @@ import pytest
 from obs_utils.config import SlewLimits, default_sky_regions
 from obs_utils.mount import verify_pwi4_altitude
 from obs_utils.night_session import TargetPlan, _auto_pointing_fields, _slew_to_target
-from obs_utils.obs_math import zenith_distance_to_altitude
 
 
 def _pwi4(altitude_deg, azimuth_deg=180.0):
@@ -30,16 +29,22 @@ def _pwi4(altitude_deg, azimuth_deg=180.0):
 
 
 def test_default_pwi4_window_is_shed_safe():
-    region, = default_sky_regions()
-    assert (region.alt_min_deg, region.alt_max_deg) == (42.0, 90.0)
+    """The shed is not axisymmetric: az 0--90 needs alt >= 60, elsewhere >= 42."""
+    limits = SimpleNamespace(enforce_regions=True, regions=default_sky_regions())
 
-    limits = SimpleNamespace(enforce_regions=True, regions=[region])
-    verify_pwi4_altitude(_pwi4(42.0), limits)   # shed floor, allowed
-    verify_pwi4_altitude(_pwi4(90.0), limits)   # zenith, allowed
-    with pytest.raises(RuntimeError, match="outside the allowed"):
-        verify_pwi4_altitude(_pwi4(41.9), limits)
-    with pytest.raises(RuntimeError, match="outside the allowed"):
-        verify_pwi4_altitude(_pwi4(20.0), limits)
+    # General sky (az 90--360): floor 42, zenith allowed.
+    verify_pwi4_altitude(_pwi4(42.0, azimuth_deg=180.0), limits)
+    verify_pwi4_altitude(_pwi4(90.0, azimuth_deg=180.0), limits)
+    for bad in (41.9, 20.0):
+        with pytest.raises(RuntimeError, match="outside the allowed"):
+            verify_pwi4_altitude(_pwi4(bad, azimuth_deg=180.0), limits)
+
+    # Northeast quadrant: shed wall, measured on sky 2026-09-07 (HD 204827).
+    verify_pwi4_altitude(_pwi4(60.0, azimuth_deg=45.0), limits)
+    verify_pwi4_altitude(_pwi4(64.0, azimuth_deg=5.0), limits)
+    for bad_alt, bad_az in ((59.9, 45.0), (50.0, 45.0), (42.0, 89.0)):
+        with pytest.raises(RuntimeError, match="outside the allowed"):
+            verify_pwi4_altitude(_pwi4(bad_alt, azimuth_deg=bad_az), limits)
 
 
 def test_fits_pointing_records_pwi4_altitude_verbatim():
@@ -59,14 +64,6 @@ def test_fits_pointing_records_pwi4_altitude_verbatim():
 
     assert fields.alt_deg == 42.0            # not 48.0
     assert fields.airmass == pytest.approx(1.492, abs=0.003)
-
-
-def test_zenith_distance_helper_is_not_for_pwi4():
-    """The helper still converts a true zenith distance, but nothing feeds it PWI4."""
-    assert zenith_distance_to_altitude(0.0) == 90.0
-    assert zenith_distance_to_altitude(42.0) == 48.0
-    assert zenith_distance_to_altitude(None) is None
-    assert zenith_distance_to_altitude(91.0) is None
 
 
 class _TrackingPwi4:
